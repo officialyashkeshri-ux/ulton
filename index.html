@@ -1,0 +1,1791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#02040a">
+<title>ULTON</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one fullscreen WebGL stage; HUD, panels and controls float above it on glass. Single dark look by design. */
+:root {
+  --bg: #02040a;
+  --cyan: #18e0ff;
+  --orange: #ff6a10;
+  --blue: #2a63ff;
+  --accent: var(--cyan);
+  --accent-soft: rgba(24, 224, 255, 0.12);
+  --line: rgba(24, 224, 255, 0.28);
+  --text: #d8f6ff;
+  --muted: #7fa3b5;
+  --danger: #ff4d5e;
+  --ok: #3dffa8;
+  --warn: #ffb02e;
+  --glass: rgba(6, 18, 30, 0.66);
+  --font-display: 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+  --font-ui: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', Consolas, ui-monospace, monospace;
+  --gl: max(16px, env(safe-area-inset-left, 0px));
+  --gr: max(16px, env(safe-area-inset-right, 0px));
+  --gt: env(safe-area-inset-top, 0px);
+  --gb: env(safe-area-inset-bottom, 0px);
+  color-scheme: dark;
+}
+.app[data-accent="orange"] { --accent: var(--orange); --accent-soft: rgba(255, 106, 16, 0.14); --line: rgba(255, 106, 16, 0.32); }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
+body { color: var(--text); font-family: var(--font-ui); font-size: 16px; -webkit-font-smoothing: antialiased; user-select: none; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+button, select, input { font: inherit; color: inherit; }
+.app { position: fixed; inset: 0; overflow: hidden; background: var(--bg); }
+#stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+#trackVideo { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+
+/* overlays */
+.fx { position: absolute; inset: 0; pointer-events: none; }
+.fx-grid { background-image: linear-gradient(var(--accent-soft) 1px, transparent 1px), linear-gradient(90deg, var(--accent-soft) 1px, transparent 1px); background-size: 64px 64px; -webkit-mask-image: radial-gradient(ellipse at center, transparent 30%, #000 55%, transparent 85%); mask-image: radial-gradient(ellipse at center, transparent 30%, #000 55%, transparent 85%); opacity: .35; }
+.fx-scan { background: repeating-linear-gradient(to bottom, rgba(255,255,255,.025) 0 1px, transparent 1px 3px); mix-blend-mode: overlay; }
+.fx-bar { height: 18vh; top: -20vh; background: linear-gradient(to bottom, transparent, var(--accent-soft), transparent); animation: scanbar 7s linear infinite; opacity: .6; }
+@keyframes scanbar { to { transform: translateY(140vh); } }
+.fx-vig { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.85) 100%); }
+.fx-frame i { position: absolute; width: 40px; height: 40px; border: 2px solid var(--line); }
+.fx-frame i:nth-child(1) { top: calc(12px + var(--gt)); left: calc(12px + env(safe-area-inset-left, 0px)); border-right: 0; border-bottom: 0; }
+.fx-frame i:nth-child(2) { top: calc(12px + var(--gt)); right: calc(12px + env(safe-area-inset-right, 0px)); border-left: 0; border-bottom: 0; }
+.fx-frame i:nth-child(3) { bottom: calc(12px + var(--gb)); left: calc(12px + env(safe-area-inset-left, 0px)); border-right: 0; border-top: 0; }
+.fx-frame i:nth-child(4) { bottom: calc(12px + var(--gb)); right: calc(12px + env(safe-area-inset-right, 0px)); border-left: 0; border-top: 0; }
+.reduced .fx-bar { display: none; }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--line); background: rgba(4,16,26,.72); color: var(--text); font-family: var(--font-ui); font-weight: 600; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; white-space: nowrap; clip-path: polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px); transition: background .15s, border-color .15s, color .15s; }
+.btn:hover:not(:disabled) { background: var(--accent-soft); border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.btn-primary { background: var(--accent); color: #001018; border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: #fff; color: #001018; }
+.btn-lg { padding: 14px 40px; font-size: 18px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-ghost { background: transparent; }
+.btn-danger { border-color: rgba(255,77,94,.5); color: #ffb3bb; }
+.btn em { font-style: normal; font-size: .75em; opacity: .6; }
+.btn-cam.live { border-color: var(--danger); color: #ffc7cd; }
+.rec { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 8px var(--danger); animation: blink 1.4s infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+.swatch i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+
+/* boot */
+.boot { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding-inline: 16px; background: radial-gradient(circle at center, rgba(2,4,10,.35), rgba(2,4,10,.92) 70%); }
+.boot-start { display: grid; justify-items: center; gap: 22px; text-align: center; }
+.logo { font-family: var(--font-display); font-weight: 900; letter-spacing: .35em; padding-left: .35em; color: #fff; text-shadow: 0 0 18px var(--accent), 0 0 48px var(--accent); }
+.boot .logo { font-size: clamp(48px, 13vw, 120px); }
+.boot-opt { display: flex; gap: 8px; align-items: center; color: var(--muted); font-size: 15px; cursor: pointer; }
+.boot-opt input { accent-color: var(--cyan); width: 18px; height: 18px; }
+.note { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.4; }
+.boot-run { width: min(640px, 100%); display: grid; gap: 28px; }
+.boot-lines { list-style: none; margin: 0; padding: 0; font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.boot-lines li { padding: 3px 0; animation: typein .35s ease-out both; }
+.boot-lines b { color: var(--ok); font-weight: 600; }
+@keyframes typein { from { opacity: 0; transform: translateX(-12px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: none; clip-path: inset(0); } }
+.online { font-family: var(--font-display); font-weight: 700; text-align: center; font-size: clamp(20px, 5vw, 48px); letter-spacing: .22em; color: #fff; text-shadow: 0 0 20px var(--cyan), 0 0 60px var(--cyan); animation: online 1.2s ease-out both; text-wrap: balance; }
+@keyframes online { from { opacity: 0; letter-spacing: .8em; filter: blur(8px); } to { opacity: 1; filter: none; } }
+.boot-skip { justify-self: center; }
+
+/* lock */
+.lock { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.lock > * { pointer-events: auto; }
+.lock-head { position: absolute; top: calc(7vh + var(--gt)); left: 0; right: 0; text-align: center; pointer-events: none; }
+.lock .logo { --accent: var(--blue); font-size: clamp(40px, 10vw, 96px); }
+.lock-sub { margin-top: 8px; font-family: var(--font-mono); letter-spacing: .3em; color: #9db9ff; font-size: 12px; display: inline-flex; align-items: center; gap: 10px; }
+.dot-blue { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 10px var(--blue); animation: blink 2s infinite; }
+.lock-ring { position: absolute; left: 50%; top: 50%; width: min(420px, 80vw); height: min(420px, 80vw); transform: translate(-50%, -50%) rotate(-90deg); pointer-events: none; }
+.lock-ring .trk { fill: none; stroke: rgba(42,99,255,.22); stroke-width: 3; stroke-dasharray: 2 10; }
+.lock-ring .fill { fill: none; stroke: var(--orange); stroke-width: 4; stroke-linecap: round; filter: drop-shadow(0 0 8px var(--orange)); }
+.lock-foot { position: absolute; left: 0; right: 0; bottom: calc(92px + var(--gb)); display: grid; justify-items: center; gap: 12px; padding-left: var(--gl); padding-right: var(--gr); text-align: center; }
+.lock-instr { margin: 0; font-size: 17px; text-wrap: balance; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.btn-hold { min-width: 170px; justify-content: center; touch-action: none; }
+.btn-hold:active { background: rgba(255,106,16,.25); border-color: var(--orange); }
+.disclaimer { margin: 0; max-width: 620px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.granted { display: grid; justify-items: center; align-content: end; padding-bottom: calc(18vh + var(--gb)); gap: 12px; text-align: center; }
+.granted h1 { margin: 0; font-family: var(--font-display); font-weight: 900; font-size: clamp(24px, 6vw, 64px); letter-spacing: .18em; color: #fff; text-shadow: 0 0 20px var(--orange), 0 0 70px var(--orange); animation: granted 1.6s cubic-bezier(.2,.8,.2,1) both; text-wrap: balance; padding-inline: 12px; }
+.granted p { margin: 0; color: #ffd2b0; font-family: var(--font-mono); letter-spacing: .2em; font-size: 12px; animation: online 1.4s .4s both; }
+.burst { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; border-radius: 50%; transform: translate(-50%,-50%); border: 2px solid var(--orange); box-shadow: 0 0 40px var(--orange), inset 0 0 30px var(--orange); animation: burst 1.4s ease-out both; }
+@keyframes granted { from { opacity: 0; transform: scale(1.4); filter: blur(10px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes burst { from { opacity: 1; width: 40px; height: 40px; } to { opacity: 0; width: 160vmax; height: 160vmax; } }
+.reduced .granted h1, .reduced .burst, .reduced .online, .reduced .boot-lines li { animation-duration: .01s; }
+
+/* HUD */
+.hud { position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: calc(20px + var(--gt)) calc(var(--gr) + 18px) 0 calc(var(--gl) + 18px); }
+.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand-mark { width: 13px; height: 13px; border: 2px solid var(--accent); transform: rotate(45deg); box-shadow: 0 0 10px var(--accent); align-self: center; }
+.brand-name { font-family: var(--font-display); font-weight: 700; letter-spacing: .3em; font-size: 19px; }
+.brand small { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.inds { display: flex; gap: 14px; align-items: center; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ind { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); letter-spacing: .1em; }
+.ind i { width: 8px; height: 8px; border-radius: 50%; background: #3a4a55; }
+.ind.on { color: var(--ok); } .ind.on i { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: blink 1.6s infinite; }
+.ind.err { color: var(--danger); } .ind.err i { background: var(--danger); }
+.ind.setup { color: var(--warn); } .ind.setup i { background: var(--warn); }
+.ind.busy i { background: var(--accent); animation: blink .6s infinite; }
+.title-mark { position: absolute; left: 50%; bottom: calc(150px + var(--gb)); transform: translateX(-50%); z-index: 2; pointer-events: none; font-size: clamp(28px, 4.4vw, 54px); opacity: .92; }
+.chip { position: absolute; left: 50%; bottom: calc(96px + var(--gb)); transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 12px; padding: 6px 14px; background: var(--glass); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; color: var(--muted); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font-variant-numeric: tabular-nums; }
+.chip.live { color: var(--text); border-color: var(--accent); }
+.chip b { color: var(--accent); min-width: 84px; text-transform: uppercase; font-weight: 600; }
+.chip .bar { width: 70px; height: 4px; background: rgba(255,255,255,.1); }
+.chip .bar span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+
+/* panels */
+.panels { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.tabs { display: none; }
+.panel { position: absolute; width: min(340px, 30vw); max-height: 62vh; display: flex; flex-direction: column; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); pointer-events: auto; transform: translate(var(--dx,0px), var(--dy,0px)) scale(var(--s,1)); transition: opacity .45s, transform .45s cubic-bezier(.2,.8,.2,1), border-color .2s, box-shadow .2s; clip-path: polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px); z-index: 1; }
+.panel.dragging { transition: opacity .45s, border-color .2s; }
+.panel::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(135deg, var(--accent-soft), transparent 40%); }
+.p-device { left: calc(var(--gl) + 2vw); top: calc(13vh + var(--gt)); transform-origin: left center; }
+.p-system { right: calc(var(--gr) + 2vw); top: calc(13vh + var(--gt)); transform-origin: right top; }
+.p-log { right: calc(var(--gr) + 2vw); bottom: calc(150px + var(--gb)); max-height: 28vh; transform-origin: right bottom; }
+.p-voice { left: calc(var(--gl) + 2vw); bottom: calc(150px + var(--gb)); max-height: 38vh; transform-origin: left bottom; }
+.p-device { max-height: calc(100vh - 13vh - 38vh - 190px); min-height: 180px; }
+.chat { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 15vh; overflow: auto; font-size: 14px; line-height: 1.35; user-select: text; -webkit-user-select: text; }
+.chat li { padding: 6px 8px; background: rgba(0,0,0,.25); border-left: 2px solid var(--line); }
+.chat li.you { border-color: var(--orange); }
+.chat li b { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; color: var(--muted); font-weight: 600; }
+.v-row { justify-content: flex-start; align-items: center; }
+.v-form { display: flex; gap: 8px; min-width: 0; }
+.v-form input { flex: 1; min-width: 0; padding: 8px 10px; background: #06121c; border: 1px solid var(--line); color: var(--text); font-size: 15px; user-select: text; -webkit-user-select: text; }
+.v-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.panel.active { border-color: var(--accent); box-shadow: 0 0 24px var(--accent-soft); z-index: 2; }
+.panel.sel { box-shadow: 0 0 0 2px var(--orange), 0 0 30px rgba(255,106,16,.35); z-index: 3; }
+.panels.collapsed .panel { opacity: 0; pointer-events: none; }
+.p-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: grab; touch-action: none; }
+.p-head:active { cursor: grabbing; }
+.p-head h2 { margin: 0; flex: 1; font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; }
+.p-idx { font-family: var(--font-mono); color: var(--accent); font-size: 12px; }
+.p-grip { color: var(--muted); letter-spacing: -2px; }
+.p-body { padding: 12px 14px 14px; overflow: auto; display: grid; gap: 10px; min-width: 0; }
+.devs { display: grid; gap: 8px; }
+.dev { padding: 10px; border: 1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.25); display: grid; gap: 8px; cursor: pointer; transition: border-color .15s, background .15s; }
+.dev:hover, .dev:focus-visible { border-color: var(--line); outline: none; }
+.dev.sel { border-color: var(--orange); background: rgba(255,106,16,.08); }
+.dev-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dev-icon { width: 26px; height: 26px; fill: none; stroke: var(--accent); stroke-width: 1.5; flex: none; }
+.dev-meta { flex: 1; min-width: 0; }
+.dev-name { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-status { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); }
+.dev-status i { width: 7px; height: 7px; border-radius: 50%; background: #5a6670; }
+.dev.connected .dev-status i { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.dev-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; padding: 2px 6px; border: 1px solid rgba(255,176,46,.5); color: var(--warn); background: rgba(255,176,46,.08); flex: none; }
+.kv { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; border-bottom: 1px dashed rgba(255,255,255,.07); padding-bottom: 5px; }
+.kv span { color: var(--muted); }
+.kv b { font-family: var(--font-mono); font-weight: 600; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.t-ok { color: var(--ok); } .t-warn { color: var(--warn); } .t-err { color: var(--danger); } .t-dim { color: #61727d; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 13px; }
+.log li { display: flex; gap: 8px; align-items: baseline; }
+.log time { font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.src { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; padding: 0 4px; border: 1px solid var(--line); color: var(--accent); }
+.src.system { color: var(--muted); border-color: #2a3a44; }
+.src.touch, .src.keyboard, .src.typed { color: #b7c7ff; border-color: #34406e; }
+.src.voice { color: var(--orange); border-color: rgba(255,106,16,.45); }
+
+/* controls */
+.controls { position: absolute; left: 50%; bottom: calc(20px + var(--gb)); transform: translateX(-50%); z-index: 8; display: flex; gap: 8px; align-items: center; padding: 8px; max-width: calc(100% - 32px); overflow-x: auto; background: rgba(2,8,14,.78); border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); scrollbar-width: none; }
+.controls::-webkit-scrollbar { display: none; }
+.sel-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.sel-wrap select { background: #06121c; border: 1px solid var(--line); padding: 6px 8px; font-size: 13px; color: var(--text); }
+
+/* cursor, preview, banners */
+.cursor { position: fixed; left: 0; top: 0; z-index: 30; pointer-events: none; width: 0; height: 0; opacity: 0; transition: opacity .2s; --hold: 0; }
+.cursor .dot { position: absolute; width: 12px; height: 12px; left: -6px; top: -6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 14px var(--accent); transition: transform .12s, background .12s; }
+.cursor .ring { position: absolute; width: 46px; height: 46px; left: -23px; top: -23px; border-radius: 50%; border: 1px solid var(--line); background: conic-gradient(var(--orange) calc(var(--hold) * 360deg), transparent 0); -webkit-mask: radial-gradient(circle, transparent 19px, #000 20px); mask: radial-gradient(circle, transparent 19px, #000 20px); }
+.cursor.pinch .dot { background: var(--orange); box-shadow: 0 0 18px var(--orange); transform: scale(.7); }
+.cursor.spread .dot { transform: scale(1.8); }
+.preview { position: absolute; right: calc(var(--gr) + 6px); bottom: calc(96px + var(--gb)); z-index: 7; margin: 0; border: 1px solid var(--line); background: #000; }
+.preview canvas { display: block; width: 240px; height: 180px; max-width: 100%; }
+.preview figcaption { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.bstack { position: absolute; top: calc(70px + var(--gt)); left: 50%; transform: translateX(-50%); z-index: 25; display: grid; gap: 8px; justify-items: center; width: max-content; max-width: calc(100% - 32px); }
+.app[data-phase="locked"] .bstack { top: calc(25vh + var(--gt)); }
+.listen { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; max-width: 100%; background: var(--glass); border: 1px solid var(--orange); box-shadow: 0 0 20px rgba(255,106,16,.25); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.listen b { font-family: var(--font-mono); font-size: 11px; letter-spacing: .2em; color: var(--orange); }
+#listenText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; padding: 10px 14px; max-width: 100%; background: rgba(60,6,14,.9); border: 1px solid var(--danger); backdrop-filter: blur(8px); font-size: 15px; line-height: 1.35; }
+.banner span { flex: 1 1 260px; min-width: 0; }
+.calib { position: absolute; left: 50%; top: calc(20vh + var(--gt)); transform: translateX(-50%); z-index: 26; width: min(460px, calc(100% - 32px)); display: grid; gap: 10px; justify-items: center; text-align: center; padding: 18px; background: var(--glass); border: 1px solid var(--accent); backdrop-filter: blur(10px); }
+.calib .step { font-family: var(--font-mono); font-size: 12px; letter-spacing: .2em; color: var(--accent); }
+.calib .msg { font-size: 20px; font-weight: 700; text-wrap: balance; }
+.calib .bar { width: 100%; height: 6px; background: rgba(255,255,255,.08); }
+.calib .bar span { display: block; height: 100%; background: var(--orange); transition: width .1s; }
+.calib.done { border-color: var(--ok); } .calib.failed { border-color: var(--danger); }
+.toasts { position: absolute; top: calc(70px + var(--gt)); right: calc(var(--gr) + 6px); z-index: 27; display: grid; gap: 8px; width: min(380px, calc(100% - 32px)); pointer-events: none; }
+.toast { padding: 10px 14px; font-size: 14px; line-height: 1.35; background: var(--glass); border-left: 3px solid var(--accent); backdrop-filter: blur(8px); animation: toastin .25s ease-out; }
+.toast.ok { border-color: var(--ok); }
+.toast.link { pointer-events: auto; }
+.toast a { color: var(--accent); font-weight: 700; text-underline-offset: 3px; } .toast.warn { border-color: var(--warn); } .toast.error { border-color: var(--danger); }
+@keyframes toastin { from { opacity: 0; transform: translateX(20px); } }
+.help { position: absolute; inset: 0; z-index: 40; background: rgba(0,0,0,.65); display: grid; place-items: center; padding: calc(16px + var(--gt)) var(--gr) calc(16px + var(--gb)) var(--gl); }
+.help-card { width: min(880px, 100%); max-height: 100%; overflow: auto; background: #050d16; border: 1px solid var(--accent); padding: 22px; display: grid; gap: 14px; user-select: text; }
+.help-card h2 { margin: 0; font-family: var(--font-display); letter-spacing: .25em; font-size: 17px; }
+.help-card h3 { margin: 0 0 8px; color: var(--accent); font-size: 14px; letter-spacing: .15em; text-transform: uppercase; }
+.help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
+.help dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
+.help dt { font-family: var(--font-mono); font-size: 12px; }
+.help dd { margin: 0; color: var(--muted); }
+.help-card .btn { justify-self: start; }
+.steps { margin: 6px 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; line-height: 1.4; color: var(--text); }
+.help-card section { min-width: 0; }
+
+@media (max-width: 860px) {
+  .hud { padding-top: calc(14px + var(--gt)); }
+  .brand small, .clock { display: none; }
+  .title-mark { display: none; }
+  .panels .tabs { display: flex; position: absolute; left: var(--gl); right: var(--gr); bottom: calc(44vh + 80px + var(--gb)); gap: 6px; pointer-events: auto; }
+  .tabs button { flex: 1; padding: 7px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; background: var(--glass); border: 1px solid var(--line); }
+  .tabs button.on { border-color: var(--accent); color: var(--accent); }
+  .panels.collapsed .tabs { display: none; }
+  .panel { left: var(--gl) !important; right: var(--gr) !important; top: auto !important; bottom: calc(72px + var(--gb)) !important; width: auto; max-height: 44vh !important; transform: none !important; }
+  .panel:not(.active) { display: none; }
+  .p-device { min-height: 0; }
+  .chat { max-height: 14vh; }
+  .controls { left: var(--gl); right: var(--gr); transform: none; bottom: calc(12px + var(--gb)); max-width: none; }
+  .chip { bottom: calc(44vh + 122px + var(--gb)); }
+  .preview { top: calc(60px + var(--gt)); bottom: auto; }
+  .preview canvas { width: 150px; height: 112px; }
+  .lock-foot { bottom: calc(74px + var(--gb)); }
+  .toasts { top: auto; bottom: calc(80px + var(--gb)); }
+}
+@media (prefers-reduced-motion: reduce) { .fx-bar { display: none; } }
+</style>
+
+</head>
+<body>
+<div class="app" id="app" data-accent="cyan">
+  <canvas id="stage" aria-label="ULTON energy orb"></canvas>
+  <div class="fx fx-grid" aria-hidden="true"></div>
+  <div class="fx fx-scan" aria-hidden="true"></div>
+  <div class="fx fx-bar" aria-hidden="true"></div>
+  <div class="fx fx-vig" aria-hidden="true"></div>
+  <div class="fx fx-frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div id="layer"></div>
+  <div id="controls"></div>
+  <div id="banner"></div>
+  <div id="calib"></div>
+  <div id="previewBox"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div id="help"></div>
+  <div class="cursor" id="cursor" aria-hidden="true"><span class="ring"></span><span class="dot"></span></div>
+  <video id="trackVideo" playsinline muted aria-hidden="true"></video>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+// ULTON — single-file web edition (Phase A)
+// Webcam frames are analysed in this browser tab only; nothing is recorded or uploaded.
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const MP_VERSION = '0.10.14';
+const MP_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}`;
+const MODEL_REMOTE = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const USER_NAME = 'Yash';
+
+const $ = (sel) => document.querySelector(sel);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+/* ───────────────────────── settings & state ───────────────────────── */
+const SETTINGS_KEY = 'ulton.web.settings.v1';
+const isMobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || matchMedia('(pointer: coarse)').matches;
+const initialQuality = () => (isMobile ? 'low' : (navigator.hardwareConcurrency || 4) >= 8 ? 'high' : 'medium');
+
+const defaults = {
+  quality: 'auto',
+  reduced: matchMedia('(prefers-reduced-motion: reduce)').matches,
+  sound: true,
+  greeting: true,
+  accent: 'cyan',
+  activation: 'palm-hold',
+  pinchThreshold: 0.35,
+  showPreview: false,
+  voiceLang: 'en-IN',
+  voiceReplies: true,
+  cameraId: '',
+};
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch { saved = {}; }
+
+const S = {
+  ...defaults,
+  ...saved,
+  phase: 'boot',
+  effQ: 'medium',
+  expanded: true,
+  orbScale: 1,
+  panels: [
+    { id: 'device', title: 'This Device', dx: 0, dy: 0, scale: 1 },
+    { id: 'system', title: 'System', dx: 0, dy: 0, scale: 1 },
+    { id: 'log', title: 'Gesture Log', dx: 0, dy: 0, scale: 1 },
+    { id: 'voice', title: 'Voice & Chat', dx: 0, dy: 0, scale: 1 },
+  ],
+  active: 0,
+  selPanel: null,
+  battery: null,
+  camera: 'off',
+  camError: null,
+  mirror: true,
+  mic: 'off',
+  micError: null,
+  interim: '',
+  chat: [],
+  pose: 'No hand',
+  conf: 0,
+  hands: 0,
+  unlockProgress: 0,
+  log: [],
+  renderFps: 0,
+  detectFps: 0,
+  calib: null,
+  help: false,
+};
+S.effQ = S.quality === 'auto' ? initialQuality() : S.quality;
+
+function saveSettings() {
+  const out = {};
+  for (const k of Object.keys(defaults)) out[k] = S[k];
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(out)); } catch { /* storage blocked */ }
+}
+
+/* per-frame hand data (not part of UI renders) */
+const RT = { present: false, cx: 0.5, cy: 0.5, pinching: false, spread: false, hold: 0, flash: 0, landmarks: [] };
+
+/* ───────────────────────── sound & speech ───────────────────────── */
+let actx = null, master = null;
+function initAudio() {
+  if (actx) { actx.resume(); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  master = actx.createGain();
+  master.gain.value = 0.35;
+  master.connect(actx.destination);
+}
+function tone(f, dur, type = 'sine', gain = 0.4, endF, delay = 0) {
+  if (!actx || !S.sound) return;
+  const t0 = actx.currentTime + delay;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f, t0);
+  if (endF) o.frequency.exponentialRampToValueAtTime(endF, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(master);
+  o.start(t0);
+  o.stop(t0 + dur + 0.05);
+}
+function noise(dur, from, to, gain = 0.25) {
+  if (!actx || !S.sound) return;
+  const t0 = actx.currentTime, len = Math.floor(actx.sampleRate * dur);
+  const buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = actx.createBufferSource(); src.buffer = buf;
+  const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2;
+  f.frequency.setValueAtTime(from, t0); f.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(gain, t0 + dur * 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f).connect(g).connect(master); src.start(t0);
+}
+const sfx = {
+  boot() { tone(55, 2.2, 'sawtooth', 0.12, 110); tone(110, 2.2, 'sine', 0.2, 220); },
+  online() { tone(440, 0.18, 'triangle', 0.25); tone(660, 0.25, 'triangle', 0.25, null, 0.12); tone(880, 0.5, 'sine', 0.2, null, 0.24); },
+  unlock() { noise(1.1, 300, 4000, 0.3); tone(120, 1.4, 'sawtooth', 0.15, 480); tone(523, 0.6, 'sine', 0.25, null, 0.9); tone(784, 0.9, 'sine', 0.22, null, 1.05); },
+  blip(hi) { tone(hi ? 1200 : 760, 0.09, 'square', 0.08); },
+  swoosh() { noise(0.35, 800, 3000, 0.15); },
+  connect() { tone(330, 0.15, 'triangle', 0.2); tone(495, 0.3, 'triangle', 0.2, null, 0.1); },
+};
+let ttsActive = false, ttsEndedAt = 0;
+const speakingNow = () => ttsActive || performance.now() - ttsEndedAt < 500;
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  const synth = window.speechSynthesis;
+  const run = () => {
+    const u = new SpeechSynthesisUtterance(text);
+    const en = synth.getVoices().filter((v) => v.lang.toLowerCase().startsWith('en'));
+    const v = en.find((x) => /male|david|daniel|guy/i.test(x.name)) || en.find((x) => /en-(us|gb)/i.test(x.lang)) || en[0];
+    if (v) u.voice = v;
+    u.rate = 0.95; u.pitch = 0.75;
+    u.onstart = () => { ttsActive = true; };
+    u.onend = u.onerror = () => { ttsActive = false; ttsEndedAt = performance.now(); };
+    synth.cancel(); synth.speak(u);
+  };
+  if (synth.getVoices().length) run();
+  else { let done = false; const once = () => { if (done) return; done = true; run(); }; synth.addEventListener('voiceschanged', once, { once: true }); setTimeout(once, 600); }
+}
+
+/* ───────────────────────── actions ───────────────────────── */
+let nextId = 1;
+function log(label, source = 'gesture') {
+  S.log = [{ id: nextId++, label, source, t: Date.now() }, ...S.log].slice(0, 14);
+  if (S.phase === 'unlocked') renderPanelBodies();
+}
+function toast(text, tone = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${tone}`;
+  el.textContent = text;
+  const box = $('#toasts');
+  box.appendChild(el);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => el.remove(), 3800);
+}
+function flash(a = 1) { RT.flash = Math.max(RT.flash, a); }
+
+function setExpanded(v, src) {
+  if (S.expanded === v) return;
+  S.expanded = v;
+  if (!v) S.selPanel = null;
+  flash(0.8); sfx.swoosh();
+  log(v ? 'Open palm → expand interface' : 'Fist → collapse interface', src);
+  layoutPanels(); renderControls();
+}
+function switchPanel(dir, src) {
+  S.active = (S.active + dir + S.panels.length) % S.panels.length;
+  S.expanded = true;
+  flash(0.5); sfx.blip(dir > 0);
+  log(`Swipe ${dir > 0 ? 'right' : 'left'} → ${S.panels[S.active].title}`, src);
+  layoutPanels();
+}
+function setOrbScale(v) { S.orbScale = clamp(v, 0.5, 2.2); }
+function scalePanel(id, v) { const p = S.panels.find((x) => x.id === id); if (p) { p.scale = clamp(v, 0.6, 1.8); layoutPanels(); } }
+function selectPanel(id) {
+  S.selPanel = id;
+  const i = S.panels.findIndex((p) => p.id === id);
+  if (i >= 0) S.active = i;
+  layoutPanels();
+}
+function lockUI(src) {
+  S.phase = 'locked'; S.unlockProgress = 0; S.selPanel = null;
+  log('Interface locked', src);
+  renderAll();
+}
+let unlockTimer = 0;
+function startUnlock(src) {
+  if (S.phase !== 'locked') return;
+  S.phase = 'unlocking'; S.unlockProgress = 1;
+  flash(1); sfx.unlock();
+  log('ULTON access granted (app-level unlock)', src);
+  renderAll();
+  clearTimeout(unlockTimer);
+  unlockTimer = setTimeout(() => { S.phase = 'unlocked'; S.expanded = true; renderAll(); }, S.reduced ? 900 : 2600);
+}
+function updateSetting(k, v) {
+  S[k] = v;
+  if (k === 'quality') { S.effQ = v === 'auto' ? initialQuality() : v; applyQuality(); }
+  if (k === 'accent') $('#app').dataset.accent = v;
+  if (k === 'reduced') $('#app').classList.toggle('reduced', v);
+  saveSettings();
+  renderControls();
+  if (k === 'showPreview') renderPreview();
+  if (S.phase === 'unlocked') renderPanelBodies();
+}
+
+/* ───────────────────────── 3D scene ───────────────────────── */
+const NOISE = `
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+  vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}`;
+const ORB_VS = `uniform float uTime; uniform float uEnergy; varying vec3 vNormal; varying vec3 vView; varying float vNoise;
+${NOISE}
+void main(){
+  float n=snoise(normal*1.6+vec3(uTime*0.35)); float n2=snoise(normal*4.2-vec3(uTime*0.7))*0.35;
+  vec3 pos=position+normal*(n+n2)*(0.05+uEnergy*0.16); vNoise=n+n2;
+  vec4 mv=modelViewMatrix*vec4(pos,1.0); vNormal=normalize(normalMatrix*normal); vView=normalize(-mv.xyz);
+  gl_Position=projectionMatrix*mv;
+}`;
+const ORB_FS = `uniform vec3 uColor; uniform vec3 uAccent; uniform float uEnergy; uniform float uFlash; uniform float uTime;
+varying vec3 vNormal; varying vec3 vView; varying float vNoise;
+void main(){
+  float fres=pow(1.0-max(dot(vNormal,vView),0.0),2.4);
+  float bands=0.5+0.5*sin(vNoise*14.0+uTime*2.2);
+  float veins=smoothstep(0.82,1.0,bands)*(0.5+uEnergy);
+  vec3 col=uColor*(0.18+0.25*bands)+uColor*fres*(1.8+uEnergy*1.5)+mix(uColor,vec3(1.0),0.4)*veins*0.9+uAccent*uFlash*(0.5+fres*1.5);
+  gl_FragColor=vec4(col,clamp(0.35+fres*0.9+veins*0.3,0.0,1.0));
+}`;
+const PT_VS = `attribute float aRadius; attribute float aAngle; attribute float aSpeed; attribute float aTilt; attribute float aSize; attribute float aSeed;
+uniform float uTime; uniform vec3 uHand; uniform float uHandStrength; uniform float uSpread; uniform float uPixelRatio; uniform float uEnergy;
+varying float vAlpha;
+mat3 rotX(float a){float c=cos(a),s=sin(a);return mat3(1.0,0.0,0.0,0.0,c,s,0.0,-s,c);}
+mat3 rotZ(float a){float c=cos(a),s=sin(a);return mat3(c,s,0.0,-s,c,0.0,0.0,0.0,1.0);}
+void main(){
+  float a=aAngle+uTime*aSpeed*(1.0+uEnergy);
+  float r=aRadius*uSpread*(1.0+0.06*sin(uTime*1.3+aSeed*6.2831));
+  vec3 p=vec3(cos(a)*r,sin(uTime*0.7+aSeed*20.0)*0.08,sin(a)*r);
+  p=rotZ(aSeed*3.1416)*(rotX(aTilt)*p);
+  vec3 d=uHand-p; float f=uHandStrength*exp(-dot(d,d)*0.35); p+=d*f*0.45;
+  vec4 mv=modelViewMatrix*vec4(p,1.0); gl_Position=projectionMatrix*mv;
+  gl_PointSize=aSize*uPixelRatio*(1.0+uEnergy*0.6+f)*(26.0/-mv.z);
+  vAlpha=(0.35+0.65*fract(aSeed*13.7))*(0.6+uEnergy*0.6+f);
+}`;
+const PT_FS = `uniform vec3 uColor; varying float vAlpha;
+void main(){ float d=length(gl_PointCoord-0.5); gl_FragColor=vec4(uColor*1.6,smoothstep(0.5,0.0,d)*vAlpha); }`;
+
+const Q = {
+  dpr: { low: 1, medium: 1.5, high: 2 },
+  particles: { low: 900, medium: 2600, high: 6000 },
+  seg: { low: 48, medium: 96, high: 144 },
+  detectFps: { low: 15, medium: 24, high: 30 },
+};
+
+const BLUE = new THREE.Color('#2a63ff'), CYAN = new THREE.Color('#18e0ff'), ORANGE = new THREE.Color('#ff6a10');
+const damp = THREE.MathUtils.damp;
+const canvas = $('#stage');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+} catch (e) {
+  document.body.insertAdjacentHTML('beforeend', '<p style="position:fixed;inset:auto 16px 16px;color:#ffb3bb;font-family:sans-serif">WebGL is not available in this browser, so the 3D orb cannot be drawn.</p>');
+  throw e;
+}
+renderer.setClearColor(0x02040a, 1);
+const scene3 = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+camera.position.z = 6.5;
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene3, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 1.2, 0.6, 0.12);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+const SC = { color: BLUE.clone(), energy: 0.2, spread: 1, hand: new THREE.Vector3(), handStrength: 0, time: 0, timeScale: 1 };
+
+// Orb
+const rig = new THREE.Group();
+const spin = new THREE.Group();
+rig.add(spin);
+scene3.add(rig);
+const orbU = { uTime: { value: 0 }, uEnergy: { value: 0 }, uFlash: { value: 0 }, uColor: { value: new THREE.Color() }, uAccent: { value: ORANGE.clone() } };
+const orbMat = new THREE.ShaderMaterial({ uniforms: orbU, vertexShader: ORB_VS, fragmentShader: ORB_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+const orb = new THREE.Mesh(new THREE.SphereGeometry(1.25, 96, 96), orbMat);
+spin.add(orb);
+const coreMat = new THREE.MeshBasicMaterial({ toneMapped: false, transparent: true, opacity: 0.85 });
+const core = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 32), coreMat);
+core.scale.setScalar(0.42);
+spin.add(core);
+
+// Rings
+const RINGS = [
+  { r: 1.62, w: 0.012, arcs: 1, fill: 1, tilt: [1.2, 0, 0], speed: 0.3, op: 0.9 },
+  { r: 1.95, w: 0.035, arcs: 6, fill: 0.7, tilt: [1.35, 0.2, 0], speed: -0.2, op: 0.7 },
+  { r: 2.3, w: 0.008, arcs: 3, fill: 0.8, tilt: [0.35, 0.55, 0], speed: 0.14, op: 0.55 },
+  { r: 2.65, w: 0.06, arcs: 36, fill: 0.3, tilt: [1.5, 0, 0.3], speed: 0.08, op: 0.4 },
+  { r: 3.05, w: 0.006, arcs: 2, fill: 0.9, tilt: [1.1, -0.4, 0.2], speed: -0.06, op: 0.35 },
+];
+const ringObjs = RINGS.map((d) => {
+  const outer = new THREE.Group();
+  outer.rotation.set(d.tilt[0], d.tilt[1], d.tilt[2]);
+  const inner = new THREE.Group();
+  outer.add(inner);
+  const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: d.op, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+  const step = (Math.PI * 2) / d.arcs;
+  for (let i = 0; i < d.arcs; i++) {
+    inner.add(new THREE.Mesh(new THREE.RingGeometry(d.r - d.w, d.r + d.w, Math.max(8, Math.round(96 / d.arcs)), 1, i * step, step * d.fill), mat));
+  }
+  rig.add(outer);
+  return { d, inner, mat };
+});
+
+// Particles
+const ptU = { uTime: { value: 0 }, uHand: { value: new THREE.Vector3() }, uHandStrength: { value: 0 }, uSpread: { value: 1 }, uPixelRatio: { value: 1 }, uEnergy: { value: 0 }, uColor: { value: new THREE.Color() } };
+const ptMat = new THREE.ShaderMaterial({ uniforms: ptU, vertexShader: PT_VS, fragmentShader: PT_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+let points = null;
+function buildParticles(count) {
+  if (points) { scene3.remove(points); points.geometry.dispose(); }
+  const g = new THREE.BufferGeometry();
+  const A = (n) => new Float32Array(count * n);
+  const pos = A(3), rad = A(1), ang = A(1), spd = A(1), tilt = A(1), size = A(1), seed = A(1);
+  for (let i = 0; i < count; i++) {
+    rad[i] = 1.55 + Math.pow(Math.random(), 1.6) * 2.6;
+    ang[i] = Math.random() * Math.PI * 2;
+    spd[i] = (0.05 + Math.random() * 0.25) * (Math.random() < 0.5 ? -1 : 1);
+    tilt[i] = (Math.random() - 0.5) * 1.1 + (Math.random() < 0.35 ? 1.4 : 0);
+    size[i] = 0.8 + Math.random() * 2.4;
+    seed[i] = Math.random();
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('aRadius', new THREE.BufferAttribute(rad, 1));
+  g.setAttribute('aAngle', new THREE.BufferAttribute(ang, 1));
+  g.setAttribute('aSpeed', new THREE.BufferAttribute(spd, 1));
+  g.setAttribute('aTilt', new THREE.BufferAttribute(tilt, 1));
+  g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+  g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  points = new THREE.Points(g, ptMat);
+  points.frustumCulled = false;
+  scene3.add(points);
+}
+
+// Stars
+const stars = (() => {
+  const n = 1400, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const r = 14 + Math.random() * 26, th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+    pos[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th);
+    pos[i * 3 + 2] = -Math.abs(r * Math.cos(ph));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.07, color: 0x5b8dff, transparent: true, opacity: 0.55, depthWrite: false }));
+  scene3.add(p);
+  return p;
+})();
+
+function applyQuality() {
+  const q = S.effQ;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Q.dpr[q]));
+  bloom.enabled = q !== 'low';
+  bloom.strength = q === 'high' ? 1.35 : 0.95;
+  buildParticles(Q.particles[q]);
+  orb.geometry.dispose();
+  orb.geometry = new THREE.SphereGeometry(1.25, Q.seg[q], Q.seg[q]);
+  resize();
+  if (S.phase === 'unlocked') renderPanelBodies();
+}
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.position.z = camera.aspect < 0.8 ? 6.5 / Math.max(0.5, camera.aspect) * 0.72 : 6.5;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+const perf = { frames: 0, t: 0, slow: 0 };
+const clock = new THREE.Clock();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.1);
+  SC.timeScale = S.reduced ? 0.3 : 1;
+  SC.time += dt * SC.timeScale;
+
+  const locked = S.phase === 'locked' || S.phase === 'boot';
+  const target = locked ? BLUE : S.phase === 'unlocking' ? ORANGE : S.accent === 'orange' ? ORANGE : CYAN;
+  SC.color.lerp(target, 1 - Math.exp(-dt * (S.phase === 'unlocking' ? 2.2 : 4)));
+  RT.flash = Math.max(0, RT.flash - dt * 1.4);
+  const handE = RT.present ? (RT.pinching || RT.spread ? 0.85 : 0.4) : 0;
+  const baseE = S.phase === 'locked' ? 0.15 + lockShownProgress() * 0.85 : 0.2;
+  SC.energy = damp(SC.energy, Math.max(S.phase === 'unlocking' ? 1 : 0, handE, RT.flash, baseE), 4, dt);
+  const collapsed = S.phase === 'unlocked' && !S.expanded;
+  SC.spread = damp(SC.spread, (collapsed ? 0.55 : 1) * (S.phase === 'unlocking' ? 1.35 : 1), 3, dt);
+  if (RT.present) {
+    const vh = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.position.z;
+    const vw = vh * camera.aspect;
+    SC.hand.set((RT.cx - 0.5) * vw, -(RT.cy - 0.5) * vh, 0.6);
+  }
+  SC.handStrength = damp(SC.handStrength, RT.present ? 1 : 0, 3, dt);
+
+  // orb
+  orbU.uTime.value = SC.time; orbU.uEnergy.value = SC.energy; orbU.uFlash.value = RT.flash; orbU.uColor.value.copy(SC.color);
+  spin.rotation.y += dt * SC.timeScale * (locked ? 0.9 : S.phase === 'unlocking' ? 2.5 : 0.25);
+  spin.rotation.z += dt * SC.timeScale * 0.05;
+  const hs = SC.handStrength;
+  rig.rotation.x = damp(rig.rotation.x, -SC.hand.y * 0.12 * hs, 3, dt);
+  rig.rotation.y = damp(rig.rotation.y, SC.hand.x * 0.12 * hs, 3, dt);
+  rig.position.x = damp(rig.position.x, SC.hand.x * 0.12 * hs, 2.5, dt);
+  rig.position.y = damp(rig.position.y, SC.hand.y * 0.12 * hs, 2.5, dt);
+  const pulse = 1 + Math.sin(SC.time * 2) * 0.015 + SC.energy * 0.06;
+  const base = S.orbScale * (collapsed ? 0.72 : 1);
+  rig.scale.setScalar(damp(rig.scale.x, base * pulse, 5, dt));
+  coreMat.color.copy(SC.color).multiplyScalar(2.2 + SC.energy * 2.5);
+
+  // rings
+  for (const r of ringObjs) {
+    r.inner.rotation.z += dt * r.d.speed * SC.timeScale * (1 + SC.energy * 1.5) * (S.phase === 'unlocking' ? 4 : 1);
+    r.inner.scale.setScalar(SC.spread);
+    r.mat.color.copy(SC.color).lerp(ORANGE, RT.flash * 0.85).multiplyScalar(1.5);
+    r.mat.opacity = r.d.op * (0.55 + SC.energy * 0.7);
+  }
+  // particles
+  ptU.uTime.value = SC.time;
+  ptU.uHand.value.copy(SC.hand);
+  ptU.uHandStrength.value = SC.handStrength * (RT.pinching ? 1.4 : 0.8);
+  ptU.uSpread.value = SC.spread * S.orbScale;
+  ptU.uPixelRatio.value = renderer.getPixelRatio();
+  ptU.uEnergy.value = SC.energy;
+  ptU.uColor.value.copy(SC.color).lerp(ORANGE, RT.flash * 0.6);
+  stars.rotation.y += dt * 0.01 * SC.timeScale;
+
+  if (S.effQ === 'low') renderer.render(scene3, camera); else composer.render(dt);
+
+  updateCursor();
+  updateLockRing();
+
+  // FPS + auto quality
+  perf.frames++; perf.t += dt;
+  if (perf.t >= 2) {
+    const fps = perf.frames / perf.t;
+    perf.frames = 0; perf.t = 0;
+    S.renderFps = Math.round(fps);
+    if (!document.hidden && S.quality === 'auto' && fps < 40 && S.effQ !== 'low') {
+      if (++perf.slow >= 2) {
+        perf.slow = 0;
+        S.effQ = S.effQ === 'high' ? 'medium' : 'low';
+        applyQuality();
+        toast(`Graphics lowered to ${S.effQ.toUpperCase()} for smoother performance`);
+      }
+    } else perf.slow = 0;
+    if (S.phase === 'unlocked' && S.panels[S.active]?.id === 'system') renderPanelBodies();
+  }
+}
+
+/* ───────────────────────── gesture engine ───────────────────────── */
+const FINGERS = [[8, 6], [12, 10], [16, 14], [20, 18]];
+const dist = (a, b, asp) => Math.hypot((a.x - b.x) * asp, a.y - b.y);
+function analyzeHand(lm, asp, thr, wasPinching) {
+  const w = lm[0];
+  const scale = Math.max(1e-4, dist(lm[0], lm[9], asp));
+  const ext = FINGERS.map(([t, p]) => dist(lm[t], w, asp) > dist(lm[p], w, asp) * 1.12);
+  const reach = FINGERS.reduce((a, [t]) => a + dist(lm[t], w, asp) / scale, 0) / 4;
+  const pinchRatio = dist(lm[4], lm[8], asp) / scale;
+  const count = ext.filter(Boolean).length;
+  const idx = [0, 5, 9, 13, 17];
+  const palm = { x: idx.reduce((a, i) => a + lm[i].x, 0) / 5, y: idx.reduce((a, i) => a + lm[i].y, 0) / 5 };
+  const limit = wasPinching ? thr * 1.35 : thr;
+  let pose;
+  if (count <= 1 && reach < 1.3) pose = 'fist';
+  else if (pinchRatio < limit) pose = 'pinch';
+  else if (count >= 4) pose = 'open';
+  else if (ext[0] && count === 1) pose = 'point';
+  else pose = 'other';
+  return { pose, pinchRatio, palm };
+}
+class OneEuro {
+  constructor(minCutoff = 1, beta = 3, dCutoff = 1) { this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff; this.reset(); }
+  reset() { this.x = undefined; this.t = undefined; this.dx = 0; }
+  alpha(c, dt) { const tau = 1 / (2 * Math.PI * c); return 1 / (1 + tau / dt); }
+  filter(v, t) {
+    if (this.x === undefined) { this.x = v; this.t = t; return v; }
+    const dt = Math.max(1e-3, t - this.t); this.t = t;
+    const aD = this.alpha(this.dCutoff, dt);
+    this.dx = aD * ((v - this.x) / dt) + (1 - aD) * this.dx;
+    const a = this.alpha(this.minCutoff + this.beta * Math.abs(this.dx), dt);
+    this.x = a * v + (1 - a) * this.x;
+    return this.x;
+  }
+}
+const mapScreen = (v, m = 0.12) => clamp((v - m) / (1 - 2 * m), 0, 1);
+class GestureEngine {
+  constructor() {
+    this.cfg = { minConfidence: 0.7, swipeDistance: 0.22, poseHoldMs: 450, cooldownMs: 900, swipeWindowMs: 380, stillRadius: 0.06 };
+    this.fx = new OneEuro(1.4); this.fy = new OneEuro(1.4);
+    this.primary = null; this.pinching = false; this.cand = 'none'; this.candSince = 0; this.stable = 'none'; this.stableSince = 0;
+    this.fired = false; this.lastDiscrete = -1e9; this.lastSwipe = -1e9; this.trail = []; this.still = null;
+    this.spreadBase = null; this.lastTwo = -1e9; this.lastSeen = -1e9; this.lastCursor = { x: 0.5, y: 0.5 };
+  }
+  resetSingle() { this.trail = []; this.still = null; this.cand = 'none'; this.stable = 'none'; this.fired = false; }
+  cursor(x, y, now) { const t = now / 1000; this.lastCursor = { x: this.fx.filter(x, t), y: this.fy.filter(y, t) }; return this.lastCursor; }
+  update(raw, now, asp, thr, mirror = true) {
+    const mx = (v) => (mirror ? 1 - v : v);
+    const ev = [];
+    const hands = raw.filter((h) => h.score >= this.cfg.minConfidence && h.landmarks.length >= 21).sort((a, b) => b.score - a.score);
+    const out = (o) => ({ events: ev, hands: 0, pose: 'none', confidence: 0, cursor: null, pinching: this.pinching, spreading: this.spreadBase !== null, stillOpenMs: 0, pinchHeldMs: 0, pinchRatio: null, ...o });
+    if (!hands.length) {
+      if (now - this.lastSeen > 250) {
+        if (this.pinching) { ev.push({ type: 'pinchEnd' }); this.pinching = false; }
+        if (this.spreadBase !== null) { ev.push({ type: 'spreadEnd' }); this.spreadBase = null; }
+        this.resetSingle(); this.fx.reset(); this.fy.reset(); this.primary = null;
+      }
+      return out({});
+    }
+    this.lastSeen = now;
+    if (hands.length >= 2) {
+      this.lastTwo = now;
+      const a = analyzeHand(hands[0].landmarks, asp, thr, false), b = analyzeHand(hands[1].landmarks, asp, thr, false);
+      const ready = (p) => p === 'open' || p === 'pinch';
+      const d = Math.hypot((a.palm.x - b.palm.x) * asp, a.palm.y - b.palm.y);
+      if (this.pinching) { ev.push({ type: 'pinchEnd' }); this.pinching = false; }
+      if (this.spreadBase === null) { if (ready(a.pose) && ready(b.pose) && d > 0.05) { this.spreadBase = d; ev.push({ type: 'spreadStart' }); } }
+      else ev.push({ type: 'spread', ratio: d / this.spreadBase });
+      this.resetSingle();
+      const c = this.cursor(mapScreen(mx((a.palm.x + b.palm.x) / 2)), mapScreen((a.palm.y + b.palm.y) / 2), now);
+      return out({ hands: 2, pose: 'two-hands', confidence: Math.min(hands[0].score, hands[1].score), cursor: c, pinching: false });
+    }
+    if (this.spreadBase !== null) {
+      if (now - this.lastTwo > 200) { ev.push({ type: 'spreadEnd' }); this.spreadBase = null; this.lastDiscrete = now; }
+      else return out({ hands: 1, pose: 'two-hands', confidence: hands[0].score, cursor: this.lastCursor, spreading: true });
+    }
+    const h = hands.find((x) => x.label === this.primary) || hands[0];
+    this.primary = h.label;
+    const lm = h.landmarks;
+    const an = analyzeHand(lm, asp, thr, this.pinching);
+    const sx = mapScreen(mx((lm[5].x + lm[9].x + lm[13].x + lm[17].x) / 4));
+    const sy = mapScreen((lm[5].y + lm[9].y + lm[13].y + lm[17].y) / 4);
+    const c = this.cursor(sx, sy, now);
+    if (an.pose !== this.cand) { this.cand = an.pose; this.candSince = now; }
+    if (this.stable !== this.cand && now - this.candSince >= 90) { this.stable = this.cand; this.stableSince = this.candSince; this.fired = false; this.still = { x: c.x, y: c.y, t: now }; }
+    const pinchNow = this.stable === 'pinch';
+    if (pinchNow && !this.pinching) { this.pinching = true; ev.push({ type: 'pinchStart', x: c.x, y: c.y }); }
+    else if (pinchNow) ev.push({ type: 'pinchMove', x: c.x, y: c.y });
+    else if (this.pinching) { this.pinching = false; ev.push({ type: 'pinchEnd' }); }
+    if (!this.still || Math.hypot(c.x - this.still.x, c.y - this.still.y) > this.cfg.stillRadius) this.still = { x: c.x, y: c.y, t: now };
+    const stillMs = now - this.still.t;
+    if (this.stable === 'open' || this.stable === 'other' || this.stable === 'point') {
+      this.trail.push({ t: now, x: sx, y: sy });
+      while (this.trail.length && now - this.trail[0].t > this.cfg.swipeWindowMs) this.trail.shift();
+      const f = this.trail[0], dx = sx - f.x, dy = sy - f.y;
+      if (Math.abs(dx) >= this.cfg.swipeDistance && Math.abs(dy) < Math.abs(dx) * 0.7 && now - this.lastSwipe > this.cfg.cooldownMs) {
+        ev.push({ type: 'swipe', dir: dx > 0 ? 'right' : 'left' });
+        this.lastSwipe = now; this.lastDiscrete = now; this.trail = []; this.still = { x: c.x, y: c.y, t: now }; this.fired = true;
+      }
+    } else this.trail = [];
+    if (!this.fired && now - this.lastDiscrete > this.cfg.cooldownMs) {
+      if (this.stable === 'open' && stillMs >= this.cfg.poseHoldMs) { ev.push({ type: 'expand' }); this.fired = true; this.lastDiscrete = now; }
+      else if (this.stable === 'fist' && now - this.stableSince >= this.cfg.poseHoldMs) { ev.push({ type: 'collapse' }); this.fired = true; this.lastDiscrete = now; }
+    }
+    return out({ hands: 1, pose: this.stable, confidence: h.score, cursor: c, stillOpenMs: this.stable === 'open' ? stillMs : 0, pinchHeldMs: this.stable === 'pinch' ? now - this.stableSince : 0, pinchRatio: an.pinchRatio });
+  }
+}
+const engine = new GestureEngine();
+
+/* ───────────────────────── camera & MediaPipe ───────────────────────── */
+const video = $('#trackVideo');
+let landmarkerP = null, stream = null, trackRaf = 0, tracking = false, lastVT = -1, lastDetect = 0;
+const fpsCount = { n: 0, t: performance.now() };
+
+async function isRealFile(url) {
+  try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok && !(r.headers.get('content-type') || '').includes('text/html'); }
+  catch { return false; }
+}
+async function loadMediaPipe() {
+  let mod;
+  try { mod = await import(`${MP_BASE}/vision_bundle.mjs`); }
+  catch { mod = await import(`${MP_BASE}/+esm`); }
+  return mod.HandLandmarker ? mod : mod.default;
+}
+function getLandmarker() {
+  if (!landmarkerP) {
+    landmarkerP = (async () => {
+      const { FilesetResolver, HandLandmarker } = await loadMediaPipe();
+      const fileset = await FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+      const modelPath = (await isRealFile('./hand_landmarker.task')) ? './hand_landmarker.task' : MODEL_REMOTE;
+      const make = (delegate) => HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: modelPath, delegate },
+        runningMode: 'VIDEO', numHands: 2,
+        minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+      });
+      try { return await make('GPU'); } catch (e) { console.warn('GPU delegate failed, using CPU', e); return await make('CPU'); }
+    })().catch((e) => { landmarkerP = null; throw e; });
+  }
+  return landmarkerP;
+}
+let cameras = [];
+async function listCameras() {
+  try { return (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput'); } catch { return []; }
+}
+// Always uses a camera that belongs to THIS device: the one you picked, or the front camera by default.
+async function openCameraStream() {
+  const base = { width: { ideal: 640 }, height: { ideal: 480 } };
+  if (S.cameraId) {
+    try { return await navigator.mediaDevices.getUserMedia({ video: { ...base, deviceId: { exact: S.cameraId } }, audio: false }); }
+    catch (e) { if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) throw e; S.cameraId = ''; }
+  }
+  return navigator.mediaDevices.getUserMedia({ video: { ...base, facingMode: 'user' }, audio: false });
+}
+async function switchCamera(id) {
+  S.cameraId = id; saveSettings();
+  stopCamera(); S.camera = 'off';
+  await enableCamera();
+}
+const inAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat|; wv\)/i.test(navigator.userAgent);
+const insideClaude = () => { try { return window.top !== window.self; } catch { return true; } };
+// Inside the Claude viewer the browser refuses camera and microphone, so those features are offered only on your own site.
+const embedded = insideClaude();
+function explainEmbedded(what) {
+  toast(`${what} can't run inside Claude. Open your own ULTON site to use it.`, 'warn');
+  S.help = true; renderHelp();
+  setTimeout(() => $('#setupSec')?.scrollIntoView({ block: 'start' }), 50);
+}
+function cameraErrorText(e) {
+  const name = e && e.name, msg = (e && e.message) || String(e);
+  if (msg === 'INSECURE') return 'The camera needs a secure page (https:// or localhost).';
+  if (msg === 'NO_API') return 'This browser has no camera API. Use a recent Chrome, Edge or Safari.';
+  if ((name === 'NotAllowedError' || name === 'SecurityError') && insideClaude())
+    return 'Camera access is blocked inside this embedded view. Hand gestures work on your own hosted copy of ULTON (see Help → Run it as your own website). Touch, mouse and keyboard controls work here.';
+  if ((name === 'NotAllowedError' || name === 'SecurityError') && inAppBrowser) return 'This in-app browser (WhatsApp, Instagram etc.) blocks the camera. Open the link in Chrome or Safari.';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'Camera permission was blocked. Tap the lock or camera icon in the address bar, allow the camera for this site, then press Retry.';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No usable camera was found. Connect a webcam and press Retry.';
+  if (name === 'NotReadableError' || name === 'AbortError') return 'The camera is busy in another app (Zoom, Teams, Camera app). Close it and press Retry.';
+  if (/fetch|import|network|load|wasm|model|module/i.test(msg)) return insideClaude()
+    ? 'The hand-tracking model cannot be downloaded inside this embedded view. Use your own hosted copy for gestures.'
+    : 'Could not load the hand-tracking model. Check your internet connection and press Retry.';
+  return `Camera or tracking error: ${msg}`;
+}
+async function enableCamera() {
+  if (embedded) { explainEmbedded('The camera'); return; }
+  if (S.camera === 'requesting' || S.camera === 'loading' || S.camera === 'on') return;
+  S.camError = null;
+  try {
+    if (!window.isSecureContext) throw new Error('INSECURE');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('NO_API');
+    setCamera('requesting');
+    stream = await openCameraStream();
+    cameras = await listCameras();
+    const vt = stream.getVideoTracks()[0];
+    const st = vt && vt.getSettings ? vt.getSettings() : {};
+    if (st.deviceId && !S.cameraId) S.cameraId = st.deviceId;
+    S.mirror = !(st.facingMode === 'environment' || /back|rear|environment/i.test((vt && vt.label) || ''));
+    stream.getVideoTracks().forEach((t) => t.addEventListener('ended', () => { stopCamera(); S.camError = 'The camera was disconnected or taken by another app.'; setCamera('error'); }));
+    video.srcObject = stream;
+    await video.play();
+    setCamera('loading');
+    const lmk = await getLandmarker();
+    if (!stream) return;
+    tracking = true; lastVT = -1;
+    const loop = () => {
+      if (!tracking) return;
+      trackRaf = requestAnimationFrame(loop);
+      if (document.hidden) return;
+      const now = performance.now();
+      if (now - lastDetect < 1000 / Q.detectFps[S.effQ]) return;
+      if (video.readyState < 2 || video.currentTime === lastVT) return;
+      lastVT = video.currentTime; lastDetect = now;
+      try { onResult(lmk.detectForVideo(video, now), now); } catch (err) { console.error(err); }
+    };
+    trackRaf = requestAnimationFrame(loop);
+    setCamera('on');
+    toast('Camera on. Frames are processed in this tab and never uploaded.', 'ok');
+    log('Camera enabled', 'system');
+  } catch (e) {
+    console.error(e);
+    stopCamera();
+    S.camError = cameraErrorText(e);
+    setCamera('error');
+  }
+}
+function stopCamera() {
+  tracking = false;
+  cancelAnimationFrame(trackRaf);
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = null;
+  video.pause();
+  video.srcObject = null;
+  RT.present = false; RT.pinching = false; RT.spread = false; RT.hold = 0; RT.landmarks = [];
+  calRun = null; drag = null; spreadT = null;
+}
+function disableCamera() {
+  stopCamera();
+  S.pose = 'No hand'; S.hands = 0; S.conf = 0; S.detectFps = 0; S.unlockProgress = 0; S.calib = null;
+  setCamera('off');
+}
+function setCamera(st) {
+  S.camera = st;
+  renderControls(); renderBanner(); renderPreview(); renderCalib();
+  if (S.phase === 'unlocked') { renderHUD(); renderPanelBodies(); }
+  if (S.phase === 'locked') renderLayer();
+}
+
+/* ───────────────────────── gestures → actions ───────────────────────── */
+const POSE = { none: 'No hand', open: 'Open palm', fist: 'Fist', pinch: 'Pinch', point: 'Point', other: 'Tracking', 'two-hands': 'Two hands' };
+let drag = null, spreadT = null, calRun = null, lastChip = { pose: '', hands: -1, t: 0 };
+const atCursor = (x, y) => document.elementFromPoint(x * window.innerWidth, y * window.innerHeight);
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] || 0; };
+
+function onResult(res, now) {
+  const asp = video.videoHeight ? video.videoWidth / video.videoHeight : 4 / 3;
+  const hd = res.handedness || res.handednesses || [];
+  const hands = (res.landmarks || []).map((lm, i) => ({ landmarks: lm, score: hd[i]?.[0]?.score ?? 0, label: hd[i]?.[0]?.categoryName ?? `h${i}` }));
+  RT.landmarks = res.landmarks || [];
+  const f = engine.update(hands, now, asp, S.pinchThreshold, S.mirror);
+  RT.present = !!f.cursor;
+  if (f.cursor) { RT.cx = f.cursor.x; RT.cy = f.cursor.y; }
+  RT.pinching = f.pinching; RT.spread = f.spreading;
+
+  fpsCount.n++;
+  if (now - fpsCount.t >= 1000) { S.detectFps = Math.round((fpsCount.n * 1000) / (now - fpsCount.t)); fpsCount.n = 0; fpsCount.t = now; }
+  if (f.pose !== lastChip.pose || f.hands !== lastChip.hands || now - lastChip.t > 300) {
+    lastChip = { pose: f.pose, hands: f.hands, t: now };
+    S.pose = POSE[f.pose] || f.pose; S.conf = f.confidence; S.hands = f.hands;
+    renderChip();
+  }
+
+  if (calRun) { stepCalibration(f, now); return; }
+
+  if (S.phase === 'locked') {
+    const p = Math.min(1, S.activation === 'palm-hold' ? f.stillOpenMs / 1200 : f.pinchHeldMs / 1000);
+    RT.hold = p; S.unlockProgress = p;
+    if (p >= 1) { RT.hold = 0; startUnlock('gesture'); }
+    return;
+  }
+  if (S.phase !== 'unlocked') return;
+
+  for (const e of f.events) handleEvent(e);
+
+  RT.hold = 0;
+}
+function handleEvent(e) {
+  const W = window.innerWidth, H = window.innerHeight;
+  switch (e.type) {
+    case 'expand': setExpanded(true, 'gesture'); break;
+    case 'collapse': setExpanded(false, 'gesture'); break;
+    case 'swipe': switchPanel(e.dir === 'right' ? 1 : -1, 'gesture'); break;
+    case 'pinchStart': {
+      flash(0.6);
+      const el = atCursor(e.x, e.y);
+      const pe = el && el.closest('[data-panel]');
+      const p = pe && S.panels.find((x) => x.id === pe.dataset.panel);
+      if (p && S.expanded) { drag = { id: p.id, sx: e.x * W, sy: e.y * H, dx0: p.dx, dy0: p.dy }; selectPanel(p.id); pe.classList.add('dragging'); log(`Pinch → grab ${p.title}`); }
+      else { drag = null; selectPanel(null); }
+      break;
+    }
+    case 'pinchMove':
+      if (drag) { const p = S.panels.find((x) => x.id === drag.id); p.dx = drag.dx0 + e.x * W - drag.sx; p.dy = drag.dy0 + e.y * H - drag.sy; layoutPanels(); }
+      break;
+    case 'pinchEnd':
+      if (drag) { document.querySelectorAll('.panel.dragging').forEach((n) => n.classList.remove('dragging')); log('Release panel'); }
+      drag = null;
+      break;
+    case 'spreadStart': {
+      const p = S.selPanel && S.panels.find((x) => x.id === S.selPanel);
+      spreadT = p ? { id: p.id, base: p.scale } : { id: 'orb', base: S.orbScale };
+      flash(0.7);
+      log(`Two-hand spread → resize ${p ? p.title : 'orb'}`);
+      break;
+    }
+    case 'spread':
+      if (spreadT) { if (spreadT.id === 'orb') setOrbScale(spreadT.base * e.ratio); else scalePanel(spreadT.id, spreadT.base * e.ratio); }
+      break;
+    case 'spreadEnd': spreadT = null; break;
+  }
+}
+function startCalibration() {
+  if (S.camera !== 'on') { toast('Turn the camera on first to calibrate', 'warn'); return; }
+  calRun = { step: 'open', start: performance.now(), samples: [], openMean: 0 };
+  S.calib = { step: 'open', progress: 0, message: 'Hold an OPEN PALM toward the camera' };
+  renderCalib();
+}
+function stepCalibration(f, now) {
+  if (now - calRun.start > 20000) {
+    calRun = null;
+    S.calib = { step: 'failed', progress: 0, message: 'Calibration timed out. Keep one hand clearly in view and try again.' };
+    renderCalib(); setTimeout(() => { S.calib = null; renderCalib(); }, 3000);
+    return;
+  }
+  if (f.hands !== 1 || f.pinchRatio === null) return;
+  if (calRun.step === 'open') {
+    if (f.pose === 'open') calRun.samples.push(f.pinchRatio);
+    S.calib = { step: 'open', progress: calRun.samples.length / 40, message: 'Hold an OPEN PALM toward the camera' };
+    if (calRun.samples.length >= 40) { calRun.openMean = median(calRun.samples); calRun.step = 'pinch'; calRun.samples = []; }
+  } else {
+    if (f.pinchRatio < calRun.openMean * 0.6) calRun.samples.push(f.pinchRatio);
+    S.calib = { step: 'pinch', progress: calRun.samples.length / 40, message: 'Now PINCH your thumb and index finger together' };
+    if (calRun.samples.length >= 40) {
+      const pm = median(calRun.samples);
+      const thr = clamp(pm + (calRun.openMean - pm) * 0.4, 0.18, 0.7);
+      calRun = null;
+      updateSetting('pinchThreshold', Number(thr.toFixed(3)));
+      S.calib = { step: 'done', progress: 1, message: `Calibrated. Pinch threshold set to ${thr.toFixed(2)}` };
+      log('Calibration complete', 'system');
+      setTimeout(() => { S.calib = null; renderCalib(); }, 2500);
+    }
+  }
+  renderCalib();
+}
+
+/* ───────────────────────── voice control ───────────────────────── */
+// Uses this device's microphone through the browser's speech recognition.
+// Note: in Chrome/Edge the browser's speech service converts audio to text online.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, wantListen = false, restarts = 0, pushToTalk = false;
+
+function micErrorText(e) {
+  const n = e && e.name;
+  if ((n === 'NotAllowedError' || n === 'SecurityError' || n === 'not-allowed' || n === 'service-not-allowed') && insideClaude())
+    return 'Microphone access is blocked inside this embedded view. Voice works on your own hosted copy of ULTON. You can still type commands in the Voice & Chat panel.';
+  if ((n === 'NotAllowedError' || n === 'not-allowed') && inAppBrowser) return 'This in-app browser blocks the microphone. Open the link in Chrome or Safari.';
+  if (n === 'NotAllowedError' || n === 'SecurityError' || n === 'not-allowed' || n === 'service-not-allowed')
+    return 'Microphone permission was blocked. Tap the lock icon in the address bar, allow the microphone for this site, then tap Retry.';
+  if (n === 'NotFoundError' || n === 'audio-capture') return 'No microphone was found on this device.';
+  if (n === 'NotReadableError') return 'The microphone is busy in another app. Close it and tap Retry.';
+  if (n === 'network') return 'Voice recognition needs an internet connection, because the browser converts speech to text online.';
+  return `Microphone error: ${(e && e.message) || n || e}`;
+}
+function setMic(st) {
+  S.mic = st;
+  renderControls(); renderBanner(); renderVoice();
+  if (S.phase === 'unlocked') { renderHUD(); renderPanelBodies(); }
+  if (S.phase === 'locked') renderLayer();
+}
+async function startVoice() {
+  if (embedded) { explainEmbedded('Voice control'); return; }
+  if (S.mic === 'listening' || S.mic === 'requesting') return;
+  S.micError = null;
+  if (!SR) {
+    S.micError = 'Voice commands need Chrome or Edge (computer or Android) or Safari on iPhone. You can still type commands in the Voice & Chat panel.';
+    setMic('error'); return;
+  }
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { S.micError = 'The microphone needs a secure page (https:// or localhost).'; setMic('error'); return; }
+  setMic('requesting');
+  try {
+    // Explicit permission check on this device's microphone, then release it right away.
+    const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+    st.getTracks().forEach((t) => t.stop());
+  } catch (e) { S.micError = micErrorText(e); setMic('error'); return; }
+  wantListen = true; restarts = 0;
+  rec = new SR();
+  rec.lang = S.voiceLang;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  rec.onstart = () => { if (S.mic !== 'listening') { setMic('listening'); log('Voice listening', 'system'); } };
+  rec.onresult = (e) => {
+    restarts = 0;
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) { const text = r[0].transcript.trim(); if (text && !speakingNow()) handleCommand(text, 'voice'); }
+      else interim += r[0].transcript;
+    }
+    S.interim = speakingNow() ? '' : interim;
+    const lt = $('#listenText'); if (lt) lt.textContent = S.interim || 'Say “ULTON, open dashboard”';
+  };
+  rec.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    wantListen = false;
+    S.micError = micErrorText({ name: e.error, message: e.message });
+    setMic('error');
+  };
+  rec.onend = () => {
+    if (wantListen && restarts < 40) {
+      restarts++;
+      setTimeout(() => { if (wantListen) { try { rec.start(); } catch { /* already running */ } } }, 250);
+    } else if (S.mic !== 'error') { S.interim = ''; setMic('off'); }
+  };
+  try { rec.start(); } catch (e) { S.micError = micErrorText(e); setMic('error'); }
+}
+function stopVoice() {
+  wantListen = false; pushToTalk = false;
+  try { rec && rec.abort(); } catch { /* ignore */ }
+  rec = null; S.interim = '';
+  if (S.mic !== 'off') setMic('off');
+}
+
+/* commands — work by voice or typed into the chat box */
+function addChat(who, text, src) {
+  S.chat = [...S.chat, { id: nextId++, who, text, src, t: Date.now() }].slice(-30);
+  renderVoice();
+}
+const panelVisible = (id) => S.phase === 'unlocked' && S.expanded && S.panels[S.active]?.id === id;
+function reply(spoken, extra) {
+  addChat('ulton', extra ? `${spoken} ${extra}` : spoken);
+  if (S.voiceReplies) speak(spoken);
+  if (!panelVisible('voice')) toast(spoken);
+}
+function showPanel(id) {
+  const i = S.panels.findIndex((p) => p.id === id);
+  if (i >= 0) { S.active = i; S.expanded = true; layoutPanels(); renderControls(); }
+}
+function needUnlocked(fn) {
+  if (S.phase === 'unlocked') fn();
+  else reply('ULTON is locked. Say “open dashboard” first.');
+}
+function toastLink(text, href, label) {
+  const el = document.createElement('div');
+  el.className = 'toast ok link';
+  el.innerHTML = `${esc(text)} <a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  const box = $('#toasts');
+  box.appendChild(el);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => el.remove(), 9000);
+}
+function normalizeCommand(t) {
+  return t.toLowerCase()
+    .replace(/\s+dot\s+/g, '.')
+    .replace(/\.(?![a-z0-9])/g, ' ')
+    .replace(/[,!?'"“”]/g, ' ')
+    .replace(/\b(hey|ok|okay)\s+(ulton|alton|ultron|olton|elton|hulton)\b/g, ' ')
+    .replace(/\b(ulton|alton|ultron|olton|elton|hulton)\b/g, ' ')
+    .replace(/\bcolor\b/g, 'colour')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const COMMANDS = [
+  { re: /\b(stop listening|stop voice|voice off|mic off|sunna band|band karo)\b/, run: () => { reply('Voice control off.'); stopVoice(); } },
+  { re: /\b(open|show|go to)\b.*\bdashboard\b|\bdashboard\b.*\b(kholo|dikhao)\b|\bunlock\b/, run: (m, src) => {
+      if (S.phase === 'locked') { startUnlock(src); reply('Access granted. Opening your dashboard.'); }
+      else if (S.phase === 'unlocked') { setExpanded(true, src); reply('Dashboard is open.'); }
+      else reply('ULTON is starting up.');
+    } },
+  { re: /\byoutube\b/, run: (m, src) => {
+      log('Voice → open YouTube', src);
+      reply('Tap the link to open YouTube on this device.');
+      toastLink('YouTube:', 'https://www.youtube.com', 'Open on this device');
+    } },
+  { re: /\b(?:open|go to|kholo|visit)\s+(?:the\s+)?(?:website\s+)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/, run: (m, src) => {
+      const url = `https://${m[1]}`;
+      log(`Voice → open ${m[1]}`, src);
+      reply(`Tap the link to open ${m[1]} on this device.`);
+      toastLink(`${m[1]}:`, url, 'Open on this device');
+    } },
+  { re: /\bdevices?\b/, run: () => needUnlocked(() => {
+      showPanel('device');
+      reply(`ULTON runs only on this ${deviceInfo().type.toLowerCase()}. It does not connect to any other device.`);
+    }) },
+  { re: /\b(orange|cyan|blue)\b/, run: (m) => {
+      const c = m[1] === 'orange' ? 'orange' : 'cyan';
+      updateSetting('accent', c); flash(0.8);
+      reply(`Colour changed to ${c}.`);
+    } },
+  { re: /\bcamera\b.*\b(off|stop|disable|band)\b|\b(stop|disable|turn off)\b.*\bcamera\b/, run: () => { disableCamera(); reply('Camera off.'); } },
+  { re: /\bcamera\b.*\b(on|start|enable|chalu)\b|\b(start|enable|turn on)\b.*\bcamera\b/, run: () => { reply('Turning on the camera.'); enableCamera(); } },
+  { re: /\b(collapse|minimi[sz]e|hide panels|close (the )?(interface|panels|dashboard)|chota karo)\b/, run: (m, src) => needUnlocked(() => { setExpanded(false, src); reply('Interface collapsed.'); }) },
+  { re: /\b(expand|show panels|bada karo)\b/, run: (m, src) => needUnlocked(() => { setExpanded(true, src); reply('Interface expanded.'); }) },
+  { re: /\bnext( panel)?\b/, run: (m, src) => needUnlocked(() => { switchPanel(1, src); reply(S.panels[S.active].title); }) },
+  { re: /\b(previous|back)( panel)?\b/, run: (m, src) => needUnlocked(() => { switchPanel(-1, src); reply(S.panels[S.active].title); }) },
+  { re: /\b(chat|voice panel)\b/, run: () => needUnlocked(() => { showPanel('voice'); reply('Voice and chat panel open.'); }) },
+  { re: /\block\b/, run: (m, src) => { if (S.phase === 'unlocked') { lockUI(src); reply('Interface locked.'); } else reply('ULTON is already locked.'); } },
+  { re: /\b(bigger|larger|enlarge|zoom in|grow)\b/, run: () => { setOrbScale(S.orbScale * 1.25); flash(0.6); reply('Orb enlarged.'); } },
+  { re: /\b(smaller|shrink|zoom out|reduce)\b/, run: () => { setOrbScale(S.orbScale / 1.25); flash(0.6); reply('Orb reduced.'); } },
+  { re: /\b(help|what can you do|commands)\b/, run: () => { S.help = true; renderHelp(); reply('Here is what I can do.'); } },
+  { re: /\b(time|samay|kitne baje)\b/, run: () => reply(`It is ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`) },
+  { re: /\b(hello|hi|hey|namaste|good (morning|afternoon|evening))\b/, run: () => reply(`Hello ${USER_NAME}. How can I help?`) },
+];
+function handleCommand(raw, src) {
+  const text = String(raw).trim();
+  if (!text) return;
+  addChat('you', text, src);
+  const t = normalizeCommand(text);
+  if (!t) { reply('Yes? Try “open dashboard”.'); return; }
+  for (const c of COMMANDS) {
+    const m = t.match(c.re);
+    if (m) { c.run(m, src); return; }
+  }
+  reply('I don’t know that command yet.',
+    'Free conversation needs the AI server from Phase B, because an API key can’t be kept safe on a public website. Try “open dashboard”, “show this device” or “change colour to orange”.');
+}
+
+/* ───────────────────────── rendering (DOM) ───────────────────────── */
+const layer = $('#layer');
+let bootTimers = [], manualHold = false, manualP = 0, lastLockT = performance.now();
+const lockShownProgress = () => Math.max(S.unlockProgress, manualP);
+
+function renderAll() {
+  $('#app').dataset.phase = S.phase;
+  renderLayer(); renderControls(); renderBanner(); renderPreview(); renderCalib(); renderHelp();
+}
+function renderLayer() {
+  if (S.phase === 'boot') { renderBoot(); return; }
+  if (S.phase === 'locked') {
+    layer.innerHTML = `
+      <div class="lock">
+        <svg class="lock-ring" viewBox="0 0 420 420" aria-hidden="true">
+          <circle class="trk" cx="210" cy="210" r="190"></circle>
+          <circle class="fill" id="lockFill" cx="210" cy="210" r="190" stroke-dasharray="${2 * Math.PI * 190}" stroke-dashoffset="${2 * Math.PI * 190}"></circle>
+        </svg>
+        <header class="lock-head"><div class="logo">ULTON</div><div class="lock-sub"><span class="dot-blue"></span>INTERFACE LOCKED</div></header>
+        <footer class="lock-foot">
+          <p class="lock-instr">${S.camera === 'on' ? (S.activation === 'palm-hold' ? 'Hold an open palm still toward the camera' : 'Pinch thumb and index finger and hold') : 'Press and hold to unlock'}${S.camera === 'on' ? ', or press and hold the button.' : ' (or hold the Space bar).'}${S.mic === 'listening' ? ' You can also say “ULTON, open dashboard”.' : ''}</p>
+          <div class="row">
+            ${embedded ? '' : S.camera !== 'on' ? `<button class="btn" data-act="camera-on" ${S.camera === 'requesting' || S.camera === 'loading' ? 'disabled' : ''}>${S.camera === 'requesting' ? 'Waiting for permission…' : S.camera === 'loading' ? 'Loading hand model…' : 'Enable Camera'}</button>` : ''}
+            <button class="btn btn-primary btn-hold" id="holdBtn">Hold to unlock</button>
+          </div>
+          <p class="disclaimer">App-level lock only. This unlocks the ULTON interface. It does not and cannot unlock your phone, computer or any operating-system lock screen.</p>
+        </footer>
+      </div>`;
+    const hb = $('#holdBtn');
+    const on = (e) => { e.preventDefault(); initAudio(); manualHold = true; };
+    const off = () => { manualHold = false; };
+    hb.addEventListener('pointerdown', on);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => hb.addEventListener(ev, off));
+    return;
+  }
+  if (S.phase === 'unlocking') {
+    layer.innerHTML = `<div class="lock granted" role="status"><div class="burst"></div><h1>ULTON ACCESS GRANTED</h1><p>Interface unlocked · Welcome back, ${esc(USER_NAME)}</p></div>`;
+    return;
+  }
+  layer.innerHTML = `
+    <header class="hud" id="hud"></header>
+    <div class="logo title-mark" aria-hidden="true">ULTON</div>
+    <div class="panels" id="panels">
+      <nav class="tabs" aria-label="Panels">${S.panels.map((p, i) => `<button data-act="tab" data-i="${i}">${esc(p.title)}</button>`).join('')}</nav>
+      ${S.panels.map((p, i) => `
+        <section class="panel p-${p.id}" data-panel="${p.id}">
+          <header class="p-head" data-drag="${p.id}"><span class="p-idx">0${i + 1}</span><h2>${esc(p.title)}</h2><span class="p-grip" aria-hidden="true">⋮⋮</span></header>
+          <div class="p-body" id="body-${p.id}"></div>
+        </section>`).join('')}
+    </div>
+    <div class="chip" id="chip" hidden></div>`;
+  const vb = $('#body-voice');
+  vb.innerHTML = `
+    <div class="v-status" id="vStatus"></div>
+    <ul class="chat" id="vChat" aria-live="polite"></ul>
+    <form class="v-form" id="vForm" autocomplete="off">
+      <input id="vInput" type="text" placeholder="Type a command, e.g. change colour to orange" aria-label="Type a command" enterkeyhint="send">
+      <button class="btn btn-sm" type="submit">Send</button>
+    </form>
+    <p class="note">Voice uses this device’s microphone. Your browser’s speech service turns speech into text (Chrome and Edge do this online). ULTON stores nothing.</p>`;
+  renderHUD(); renderPanelBodies(); renderVoice(); layoutPanels(); renderChip();
+}
+function renderVoice() {
+  const st = $('#vStatus'), ch = $('#vChat');
+  if (!st || !ch) return;
+  const label = { off: 'Off', requesting: 'Waiting for permission…', listening: 'Listening', error: 'Error' }[S.mic];
+  st.innerHTML = `
+    <div class="kv"><span>Microphone</span><b class="${S.mic === 'listening' ? 't-ok' : S.mic === 'error' ? 't-err' : 't-dim'}">${label}</b></div>
+    <div class="row v-row">
+      ${S.mic === 'listening'
+        ? '<button class="btn btn-sm btn-danger" data-act="mic-off">Stop listening</button>'
+        : embedded ? '<button class="btn btn-sm btn-primary" data-act="setup">Voice needs your own site</button>'
+        : `<button class="btn btn-sm btn-primary" data-act="mic-on" ${S.mic === 'requesting' ? 'disabled' : ''}>Start voice</button>`}
+      <label class="sel-wrap" for="vLang">Accent <select id="vLang">
+        <option value="en-IN" ${S.voiceLang === 'en-IN' ? 'selected' : ''}>English (India)</option>
+        <option value="en-US" ${S.voiceLang === 'en-US' ? 'selected' : ''}>English (US)</option>
+        <option value="en-GB" ${S.voiceLang === 'en-GB' ? 'selected' : ''}>English (UK)</option>
+      </select></label>
+      <button class="btn btn-sm ${S.voiceReplies ? 'on' : ''}" data-act="voice-replies">Spoken replies</button>
+    </div>`;
+  $('#vLang').addEventListener('change', (e) => {
+    updateSetting('voiceLang', e.target.value);
+    if (S.mic === 'listening') { stopVoice(); setTimeout(startVoice, 300); }
+  });
+  ch.innerHTML = S.chat.length
+    ? S.chat.slice(-10).map((m) => `<li class="${m.who}"><b>${m.who === 'you' ? 'You' : 'ULTON'}</b>${esc(m.text)}</li>`).join('')
+    : '<li class="ulton"><b>ULTON</b>Say or type a command. Try “open dashboard”, “show this device”, “change colour to orange” or “stop listening”.</li>';
+  ch.scrollTop = ch.scrollHeight;
+}
+function renderBoot() {
+  layer.innerHTML = `
+    <div class="boot">
+      <div class="boot-start" id="bootStart">
+        <div class="logo">ULTON</div>
+        <button class="btn btn-primary btn-lg" data-act="init">Initialize</button>
+        <label class="boot-opt"><input type="checkbox" id="greetOpt" ${S.greeting ? 'checked' : ''}> Spoken greeting</label>
+        <p class="note">Sound and speech start after you tap, because browsers block them until then.</p>
+      </div>
+    </div>`;
+  $('#greetOpt').addEventListener('change', (e) => updateSetting('greeting', e.target.checked));
+}
+const BOOT_LINES = [
+  'Initializing core systems',
+  'Calibrating holographic display',
+  'Running on this device only',
+  'Privacy guard active: camera frames stay on this device',
+  'Voice control ready on request; AI chat needs server setup',
+];
+function runBoot() {
+  initAudio(); sfx.boot();
+  layer.querySelector('.boot').innerHTML = `<div class="boot-run"><ul class="boot-lines" id="bootLines" aria-live="polite"></ul><div id="onlineSlot"></div><button class="btn btn-ghost boot-skip" data-act="skip">Skip</button></div>`;
+  const step = S.reduced ? 140 : 430;
+  BOOT_LINES.forEach((l, i) => bootTimers.push(setTimeout(() => {
+    const li = document.createElement('li'); li.innerHTML = `<b>[ OK ]</b> ${esc(l)}`; $('#bootLines')?.appendChild(li);
+  }, step * (i + 1))));
+  const tOn = step * (BOOT_LINES.length + 1);
+  bootTimers.push(setTimeout(() => {
+    const slot = $('#onlineSlot'); if (slot) slot.innerHTML = '<div class="online">ULTON SYSTEM ONLINE</div>';
+    sfx.online();
+    if (S.greeting) speak(`Welcome back, ${USER_NAME}.`);
+  }, tOn));
+  bootTimers.push(setTimeout(finishBoot, tOn + (S.reduced ? 1000 : 2400)));
+}
+function finishBoot() {
+  bootTimers.forEach(clearTimeout); bootTimers = [];
+  S.phase = 'locked';
+  renderAll();
+}
+function renderHUD() {
+  const hud = $('#hud'); if (!hud) return;
+  const cam = S.camera === 'on' ? 'on' : S.camera === 'error' ? 'err' : S.camera === 'off' ? '' : 'busy';
+  hud.innerHTML = `
+    <div class="brand"><span class="brand-mark"></span><span class="brand-name">ULTON</span><small>web · Phase A</small></div>
+    <div class="inds">
+      <span class="ind ${cam}" title="${S.camera === 'on' ? 'Camera on, processed locally, not recorded' : 'Camera ' + S.camera}"><i></i>CAM</span>
+      <span class="ind ${S.mic === 'listening' ? 'on' : S.mic === 'error' ? 'err' : S.mic === 'requesting' ? 'busy' : ''}" title="Microphone ${S.mic}"><i></i>MIC</span>
+      <span class="ind setup" title="AI chat needs server setup (Phase B)"><i></i>AI</span>
+      <span class="clock" id="clock"></span>
+    </div>`;
+  tickClock();
+}
+function tickClock() { const c = $('#clock'); if (c) c.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+setInterval(tickClock, 1000);
+
+function renderChip() {
+  const c = $('#chip'); if (!c) return;
+  c.hidden = S.camera !== 'on';
+  c.classList.toggle('live', S.hands > 0);
+  c.innerHTML = `<b>${esc(S.pose)}</b><span class="bar"><span style="width:${Math.round(S.conf * 100)}%"></span></span><span>${S.hands} hand${S.hands === 1 ? '' : 's'} · ${Math.round(S.conf * 100)}%</span>`;
+}
+function deviceInfo() {
+  const ua = navigator.userAgent;
+  const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad|iPod/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac OS X|Macintosh/i.test(ua) ? 'macOS' : /CrOS/i.test(ua) ? 'ChromeOS' : /Linux/i.test(ua) ? 'Linux' : 'Unknown';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const type = /iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua)) ? 'Tablet' : isMobile ? 'Phone' : 'Computer';
+  return { os, browser: inAppBrowser ? `${browser} (in-app)` : browser, type };
+}
+if (navigator.getBattery) {
+  navigator.getBattery().then((b) => {
+    const upd = () => { S.battery = `${Math.round(b.level * 100)}%${b.charging ? ' · charging' : ''}`; if (S.phase === 'unlocked') renderPanelBodies(); };
+    upd(); b.addEventListener('levelchange', upd); b.addEventListener('chargingchange', upd);
+  }).catch(() => {});
+}
+window.addEventListener('online', () => S.phase === 'unlocked' && renderPanelBodies());
+window.addEventListener('offline', () => S.phase === 'unlocked' && renderPanelBodies());
+function renderPanelBodies() {
+  const dv = $('#body-device'), sy = $('#body-system'), lg = $('#body-log');
+  if (!dv) return;
+  const di = deviceInfo();
+  const camTxt = embedded ? 'Needs your own site' : S.camera === 'on' ? (S.mirror ? 'On · front camera' : 'On · back camera') : S.camera === 'error' ? 'Error' : 'Off';
+  const micTxt = embedded ? 'Needs your own site' : S.mic === 'listening' ? 'Listening' : S.mic === 'error' ? 'Error' : 'Off';
+  dv.innerHTML = `
+    <div class="kv"><span>Type</span><b>${esc(di.type)}</b></div>
+    <div class="kv"><span>System</span><b>${esc(di.os)}</b></div>
+    <div class="kv"><span>Browser</span><b>${esc(di.browser)}</b></div>
+    <div class="kv"><span>Screen</span><b>${window.innerWidth} × ${window.innerHeight}</b></div>
+    <div class="kv"><span>Internet</span><b class="${navigator.onLine ? 't-ok' : 't-err'}">${navigator.onLine ? 'Online' : 'Offline'}</b></div>
+    ${S.battery ? `<div class="kv"><span>Battery</span><b>${esc(S.battery)}</b></div>` : ''}
+    <div class="kv"><span>Camera</span><b class="${S.camera === 'on' ? 't-ok' : S.camera === 'error' ? 't-err' : 't-dim'}">${camTxt}</b></div>
+    <div class="kv"><span>Microphone</span><b class="${S.mic === 'listening' ? 't-ok' : S.mic === 'error' ? 't-err' : 't-dim'}">${micTxt}</b></div>
+    <p class="note">ULTON runs only on this device. It uses this device’s own camera and microphone and never connects to or controls any other phone or computer.</p>`;
+  const camTone = S.camera === 'on' ? 't-ok' : S.camera === 'error' ? 't-err' : 't-dim';
+  sy.innerHTML = `
+    <div class="kv"><span>Camera</span><b class="${camTone}">${S.camera.toUpperCase()}</b></div>
+    <div class="kv"><span>Hand tracking</span><b class="${S.camera === 'on' ? 't-ok' : 't-dim'}">${S.camera === 'on' ? S.detectFps + ' fps · local' : 'idle'}</b></div>
+    <div class="kv"><span>Render</span><b>${S.renderFps} fps · ${S.effQ.toUpperCase()}${S.quality === 'auto' ? ' (auto)' : ''}</b></div>
+    <div class="kv"><span>Pinch threshold</span><b>${S.pinchThreshold.toFixed(2)}</b></div>
+    <div class="kv"><span>Microphone</span><b class="${S.mic === 'listening' ? 't-ok' : S.mic === 'error' ? 't-err' : 't-dim'}">${S.mic.toUpperCase()}</b></div>
+    <div class="kv"><span>Voice engine</span><b class="${SR ? '' : 't-warn'}">${SR ? 'Browser speech' : 'Not supported here'}</b></div>
+    <div class="kv"><span>AI chat</span><b class="t-warn">Needs server setup (Phase B)</b></div>
+    <p class="note">Camera frames are analysed in this browser tab. Nothing is recorded or uploaded.</p>
+    <button class="btn btn-sm" data-act="reset-layout">Reset layout</button>`;
+  lg.innerHTML = S.log.length
+    ? `<ul class="log">${S.log.map((e) => `<li><time>${new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</time><span class="src ${e.source}">${e.source}</span>${esc(e.label)}</li>`).join('')}</ul>`
+    : '<p class="note">No gestures yet. Try an open palm, a fist or a pinch, or use the buttons.</p>';
+}
+function layoutPanels() {
+  const wrap = $('#panels'); if (!wrap) return;
+  wrap.classList.toggle('collapsed', !S.expanded);
+  S.panels.forEach((p, i) => {
+    const el = wrap.querySelector(`[data-panel="${p.id}"]`);
+    if (!el) return;
+    el.style.setProperty('--dx', `${p.dx}px`);
+    el.style.setProperty('--dy', `${p.dy}px`);
+    el.style.setProperty('--s', S.expanded ? p.scale : 0.55);
+    el.classList.toggle('active', i === S.active);
+    el.classList.toggle('sel', S.selPanel === p.id);
+    el.setAttribute('aria-hidden', String(!S.expanded));
+  });
+  wrap.querySelectorAll('.tabs button').forEach((b, i) => b.classList.toggle('on', i === S.active));
+}
+function renderControls() {
+  const c = $('#controls');
+  if (S.phase === 'boot') { c.innerHTML = ''; return; }
+  const busy = S.camera === 'requesting' || S.camera === 'loading';
+  const un = S.phase === 'unlocked';
+  c.innerHTML = `<nav class="controls" aria-label="ULTON controls">
+    ${embedded ? '<button class="btn btn-primary" data-act="setup">Camera &amp; Voice setup</button>' : S.camera === 'on'
+      ? '<button class="btn btn-cam live" data-act="camera-off"><span class="rec"></span>Camera Off</button>'
+      : `<button class="btn btn-cam" data-act="camera-on" ${busy ? 'disabled' : ''}>${S.camera === 'requesting' ? 'Waiting…' : S.camera === 'loading' ? 'Loading model…' : 'Enable Camera'}</button>`}
+    ${S.camera === 'on' && cameras.length > 1 ? `<label class="sel-wrap" for="camSel">Camera <select id="camSel">${cameras.map((c, i) => `<option value="${esc(c.deviceId)}" ${c.deviceId === S.cameraId ? 'selected' : ''}>${esc(c.label || `Camera ${i + 1}`)}</option>`).join('')}</select></label>` : ''}
+    ${embedded ? '' : S.mic === 'listening'
+      ? '<button class="btn btn-cam live" data-act="mic-off"><span class="rec"></span>Voice Off</button>'
+      : `<button class="btn" data-act="mic-on" ${S.mic === 'requesting' ? 'disabled' : ''}>${S.mic === 'requesting' ? 'Waiting…' : 'Voice'}</button>`}
+    ${embedded ? '' : `<button class="btn ${S.showPreview ? 'on' : ''}" data-act="preview">Preview</button>
+    <button class="btn" data-act="calibrate" ${S.camera === 'on' ? '' : 'disabled'}>Calibrate</button>`}
+    ${un ? `<button class="btn" data-act="expand">${S.expanded ? 'Collapse' : 'Expand'}</button>` : ''}
+    <label class="sel-wrap" for="qSel">Graphics <select id="qSel">
+      ${['auto', 'high', 'medium', 'low'].map((q) => `<option value="${q}" ${S.quality === q ? 'selected' : ''}>${q[0].toUpperCase() + q.slice(1)}</option>`).join('')}
+    </select></label>
+    <label class="sel-wrap" for="aSel">Unlock <select id="aSel">
+      <option value="palm-hold" ${S.activation === 'palm-hold' ? 'selected' : ''}>Palm hold</option>
+      <option value="pinch-hold" ${S.activation === 'pinch-hold' ? 'selected' : ''}>Pinch hold</option>
+    </select></label>
+    <button class="btn ${S.reduced ? 'on' : ''}" data-act="reduced">Reduced motion</button>
+    <button class="btn ${S.sound ? 'on' : ''}" data-act="sound">Sound</button>
+    <button class="btn swatch" data-act="accent"><i></i>Colour</button>
+    <button class="btn" data-act="help">Help</button>
+    ${un ? '<button class="btn" data-act="lock">Lock</button>' : ''}
+  </nav>`;
+  $('#qSel').addEventListener('change', (e) => updateSetting('quality', e.target.value));
+  $('#camSel')?.addEventListener('change', (e) => switchCamera(e.target.value));
+  $('#aSel').addEventListener('change', (e) => { updateSetting('activation', e.target.value); if (S.phase === 'locked') renderLayer(); });
+}
+function renderBanner() {
+  const parts = [];
+  if (S.camera === 'error' && S.camError) parts.push(`<div class="banner" role="alert"><span>${esc(S.camError)}</span><button class="btn btn-sm" data-act="camera-on">Retry</button><button class="btn btn-sm btn-ghost" data-act="dismiss">Dismiss</button></div>`);
+  if (S.mic === 'error' && S.micError) parts.push(`<div class="banner" role="alert"><span>${esc(S.micError)}</span><button class="btn btn-sm" data-act="mic-on">Retry</button><button class="btn btn-sm btn-ghost" data-act="mic-dismiss">Dismiss</button></div>`);
+  if (S.mic === 'listening') parts.push(`<div class="listen"><span class="rec"></span><b>LISTENING</b><span id="listenText">${esc(S.interim || 'Say “ULTON, open dashboard”')}</span><button class="btn btn-sm btn-ghost" data-act="mic-off">Stop</button></div>`);
+  $('#banner').innerHTML = parts.length ? `<div class="bstack">${parts.join('')}</div>` : '';
+}
+function renderCalib() {
+  const c = $('#calib'), r = S.calib;
+  if (!r) { c.innerHTML = ''; return; }
+  c.innerHTML = `<div class="calib ${r.step}" role="dialog" aria-label="Gesture calibration">
+    <div class="step">${r.step === 'open' ? 'STEP 1 / 2' : r.step === 'pinch' ? 'STEP 2 / 2' : 'CALIBRATION'}</div>
+    <div class="msg">${esc(r.message)}</div>
+    <div class="bar"><span style="width:${Math.round(Math.min(1, r.progress) * 100)}%"></span></div>
+    ${r.step === 'open' || r.step === 'pinch' ? '<button class="btn btn-sm btn-ghost" data-act="cal-cancel">Cancel</button>' : ''}
+  </div>`;
+}
+const HAND_LINKS = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+let previewRaf = 0;
+function renderPreview() {
+  cancelAnimationFrame(previewRaf);
+  const box = $('#previewBox');
+  if (!S.showPreview || S.camera !== 'on') { box.innerHTML = ''; return; }
+  box.innerHTML = '<figure class="preview"><canvas id="pv" width="320" height="240"></canvas><figcaption><span class="rec"></span>LOCAL PREVIEW · not recorded</figcaption></figure>';
+  const cv = $('#pv'), ctx = cv.getContext('2d');
+  const draw = () => {
+    previewRaf = requestAnimationFrame(draw);
+    if (!video.videoWidth) return;
+    const w = cv.width, h = cv.height;
+    ctx.save(); if (S.mirror) { ctx.translate(w, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.lineWidth = 2;
+    for (const lm of RT.landmarks) {
+      ctx.strokeStyle = 'rgba(24,224,255,.9)'; ctx.beginPath();
+      for (const [a, b] of HAND_LINKS) { ctx.moveTo(lm[a].x * w, lm[a].y * h); ctx.lineTo(lm[b].x * w, lm[b].y * h); }
+      ctx.stroke(); ctx.fillStyle = '#ff7a1a';
+      for (const p of lm) { ctx.beginPath(); ctx.arc(p.x * w, p.y * h, 2.6, 0, Math.PI * 2); ctx.fill(); }
+    }
+    ctx.restore();
+  };
+  draw();
+}
+function renderHelp() {
+  const h = $('#help');
+  if (!S.help) { h.innerHTML = ''; return; }
+  h.innerHTML = `<div class="help" data-act="help-close-bg"><div class="help-card" role="dialog" aria-label="Controls">
+    <h2>Controls</h2>
+    <div class="help-grid">
+      <section><h3>Hand gestures (camera)</h3><dl>
+        <dt>Open palm, hold still</dt><dd>Expand interface</dd>
+        <dt>Closed fist, hold</dt><dd>Collapse interface</dd>
+        <dt>Thumb–index pinch</dt><dd>Grab and drag a panel</dd>
+        <dt>Two hands apart or together</dt><dd>Resize selected panel, or the orb</dd>
+        <dt>Fast swipe left / right</dt><dd>Switch active panel</dd>
+        <dt>Lock screen</dt><dd>Palm hold (or pinch hold) to unlock</dd>
+      </dl></section>
+      <section><h3>Touch, mouse, keyboard</h3><dl>
+        <dt>Drag panel header</dt><dd>Move panel</dd>
+        <dt>Two-finger pinch on the orb / wheel</dt><dd>Resize orb</dd>
+        <dt>Wheel on a panel</dt><dd>Resize panel</dd>
+        <dt>E / Q</dt><dd>Expand / collapse</dd>
+        <dt>← / →</dt><dd>Switch panel</dd>
+        <dt>O · P · L</dt><dd>Colour · Preview · Lock</dd>
+        <dt>Hold Space</dt><dd>Unlock on the lock screen</dd>
+        <dt>H or ?</dt><dd>This help</dd>
+      </dl></section>
+    </div>
+    <section><h3>Voice commands</h3><dl>
+        <dt>“ULTON, open dashboard”</dt><dd>Unlock and open the interface</dd>
+        <dt>“Show this device”</dt><dd>Open the This Device panel</dd>
+        <dt>“Change colour to orange / cyan”</dt><dd>Switch the accent colour</dd>
+        <dt>“Open YouTube” · “Open google.com”</dt><dd>Gives a link to open it on this device</dd>
+        <dt>“Next / previous panel” · “Expand” · “Collapse”</dt><dd>Navigate</dd>
+        <dt>“Bigger / smaller” · “Camera on / off” · “Lock”</dt><dd>Orb size, camera, lock</dd>
+        <dt>“Stop listening”</dt><dd>Turn the microphone off</dd>
+        <dt>Hold V</dt><dd>Push-to-talk on a keyboard</dd>
+      </dl><p class="note">The same commands work typed into the Voice &amp; Chat panel.</p></section>
+    <section id="setupSec"><h3>Camera and voice: use your own site</h3>
+      <p class="note">${embedded ? '<b>You are viewing ULTON inside Claude.</b> Claude blocks the camera and microphone for every page, so gestures and voice cannot work here. Touch, mouse and keyboard controls still work.' : 'You are on your own copy, so camera and voice can work here.'}</p>
+      <ol class="steps">
+        <li>Download <b>index.html</b> from the chat.</li>
+        <li>On github.com, create a new public repository (for example <b>ulton</b>).</li>
+        <li>Add file → Upload files → choose <b>index.html</b> → Commit.</li>
+        <li>Settings → Pages → Branch: <b>main</b> → Save. Wait one or two minutes.</li>
+        <li>Open the link (like <b>yourname.github.io/ulton</b>) in Chrome or Safari, not inside WhatsApp or Instagram.</li>
+        <li>Tap <b>Enable Camera</b> or <b>Voice</b> and choose <b>Allow</b>.</li>
+      </ol>
+      <p class="note">ULTON always uses the camera and microphone of the device it is opened on, and never connects to any other device. The hand model downloads once from Google's MediaPipe servers.</p>
+    </section>
+    <p class="note">Privacy: webcam frames are analysed inside this tab and never stored or uploaded. The lock screen is app-level only and never unlocks a phone or computer.</p>
+    <button class="btn btn-primary" data-act="help">Close</button>
+  </div></div>`;
+}
+
+/* ───────────────────────── per-frame DOM bits ───────────────────────── */
+const cursorEl = $('#cursor');
+function updateCursor() {
+  const show = S.camera === 'on' && RT.present;
+  cursorEl.style.opacity = show ? '1' : '0';
+  if (!show) return;
+  cursorEl.style.transform = `translate3d(${RT.cx * window.innerWidth}px, ${RT.cy * window.innerHeight}px, 0)`;
+  cursorEl.style.setProperty('--hold', String(RT.hold));
+  cursorEl.classList.toggle('pinch', RT.pinching);
+  cursorEl.classList.toggle('spread', RT.spread);
+}
+function updateLockRing() {
+  const now = performance.now(), dt = now - lastLockT;
+  lastLockT = now;
+  if (S.phase !== 'locked') { manualP = 0; return; }
+  const prev = manualP;
+  manualP = manualHold ? Math.min(1, manualP + dt / 1000) : Math.max(0, manualP - dt / 400);
+  if (manualP >= 1 && prev < 1) { manualHold = false; startUnlock('touch'); return; }
+  const fill = $('#lockFill');
+  if (fill) { const C = 2 * Math.PI * 190; fill.setAttribute('stroke-dashoffset', String(C * (1 - lockShownProgress()))); }
+}
+
+/* ───────────────────────── input wiring ───────────────────────── */
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('[data-act]');
+  if (!t) return;
+  const a = t.dataset.act;
+  switch (a) {
+    case 'init': runBoot(); break;
+    case 'skip': initAudio(); finishBoot(); break;
+    case 'camera-on': initAudio(); enableCamera(); break;
+    case 'camera-off': disableCamera(); break;
+    case 'mic-on': initAudio(); startVoice(); break;
+    case 'mic-off': stopVoice(); break;
+    case 'mic-dismiss': S.micError = null; setMic('off'); break;
+    case 'voice-replies': updateSetting('voiceReplies', !S.voiceReplies); renderVoice(); break;
+    case 'dismiss': S.camError = null; setCamera('off'); break;
+    case 'preview': updateSetting('showPreview', !S.showPreview); break;
+    case 'calibrate': startCalibration(); break;
+    case 'cal-cancel': calRun = null; S.calib = null; renderCalib(); break;
+    case 'expand': setExpanded(!S.expanded, 'touch'); break;
+    case 'reduced': updateSetting('reduced', !S.reduced); break;
+    case 'sound': initAudio(); updateSetting('sound', !S.sound); break;
+    case 'accent': updateSetting('accent', S.accent === 'cyan' ? 'orange' : 'cyan'); break;
+    case 'help': S.help = !S.help; renderHelp(); break;
+    case 'help-close-bg': if (e.target === t) { S.help = false; renderHelp(); } break;
+    case 'lock': lockUI('touch'); break;
+    case 'tab': S.active = Number(t.dataset.i); S.expanded = true; layoutPanels(); break;
+    case 'reset-layout': S.panels.forEach((p) => { p.dx = 0; p.dy = 0; p.scale = 1; }); S.orbScale = 1; S.selPanel = null; layoutPanels(); log('Layout reset', 'system'); break;
+    case 'setup': S.help = true; renderHelp(); setTimeout(() => $('#setupSec')?.scrollIntoView({ block: 'start' }), 50); break;
+  }
+});
+document.addEventListener('keydown', (e) => {
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+  if (e.code === 'Space' && S.phase === 'locked' && !e.repeat) { e.preventDefault(); initAudio(); manualHold = true; return; }
+  if (e.key === 'v' && !e.repeat && S.phase !== 'boot') { if (embedded) { explainEmbedded('Voice control'); return; } if (S.mic !== 'listening') { pushToTalk = true; initAudio(); startVoice(); } return; }
+  if (e.key === 'h' || e.key === '?') { S.help = !S.help; renderHelp(); return; }
+  if (e.key === 'Escape') { S.help = false; renderHelp(); return; }
+  if (e.key === 'p') { updateSetting('showPreview', !S.showPreview); return; }
+  if (e.key === 'o') { updateSetting('accent', S.accent === 'cyan' ? 'orange' : 'cyan'); return; }
+  if (S.phase !== 'unlocked') return;
+  if (e.key === 'e') setExpanded(true, 'keyboard');
+  else if (e.key === 'q') setExpanded(false, 'keyboard');
+  else if (e.key === 'ArrowRight') switchPanel(1, 'keyboard');
+  else if (e.key === 'ArrowLeft') switchPanel(-1, 'keyboard');
+  else if (e.key === '+' || e.key === '=') setOrbScale(S.orbScale * 1.1);
+  else if (e.key === '-') setOrbScale(S.orbScale / 1.1);
+  else if (e.key === 'l') lockUI('keyboard');
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') manualHold = false;
+  if (e.key === 'v' && pushToTalk) { pushToTalk = false; wantListen = false; try { rec && rec.stop(); } catch { /* ignore */ } }
+});
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'vForm') return;
+  e.preventDefault();
+  const inp = $('#vInput');
+  const text = inp.value;
+  inp.value = '';
+  handleCommand(text, 'typed');
+});
+
+// Panel dragging (mouse/touch) and wheel resize
+let pDrag = null;
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest('[data-drag]');
+  if (!h || S.phase !== 'unlocked') return;
+  const p = S.panels.find((x) => x.id === h.dataset.drag);
+  h.setPointerCapture(e.pointerId);
+  pDrag = { id: p.id, sx: e.clientX, sy: e.clientY, dx0: p.dx, dy0: p.dy, el: h.closest('.panel') };
+  pDrag.el.classList.add('dragging');
+  selectPanel(p.id);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!pDrag) return;
+  const p = S.panels.find((x) => x.id === pDrag.id);
+  p.dx = pDrag.dx0 + e.clientX - pDrag.sx; p.dy = pDrag.dy0 + e.clientY - pDrag.sy;
+  layoutPanels();
+});
+const endPDrag = () => { if (pDrag) { pDrag.el.classList.remove('dragging'); pDrag = null; } };
+document.addEventListener('pointerup', endPDrag);
+document.addEventListener('pointercancel', endPDrag);
+window.addEventListener('wheel', (e) => {
+  if (S.phase !== 'unlocked') return;
+  const panel = e.target.closest && e.target.closest('[data-panel]');
+  if (panel) { const p = S.panels.find((x) => x.id === panel.dataset.panel); scalePanel(p.id, p.scale * (1 - e.deltaY * 0.0012)); return; }
+  if (e.target.closest && e.target.closest('.controls, .help')) return;
+  setOrbScale(S.orbScale * (1 - e.deltaY * 0.001));
+}, { passive: true });
+
+// Two-finger pinch on the stage resizes the orb (touch alternative to two-hand spread)
+const touches = new Map();
+let pinchBase = null, wasMulti = false;
+canvas.addEventListener('pointerdown', (e) => { touches.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (touches.size === 1) wasMulti = false; if (touches.size > 1) wasMulti = true; });
+canvas.addEventListener('pointermove', (e) => {
+  if (!touches.has(e.pointerId)) return;
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size === 2 && S.phase === 'unlocked') {
+    const [a, b] = [...touches.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (!pinchBase) pinchBase = { d, s: S.orbScale };
+    else setOrbScale(pinchBase.s * (d / pinchBase.d));
+  }
+});
+const endTouch = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinchBase = null; };
+canvas.addEventListener('pointerup', endTouch);
+canvas.addEventListener('pointercancel', endTouch);
+canvas.addEventListener('pointerleave', endTouch);
+
+// Horizontal swipe on the stage switches panels (touch alternative)
+let swipeStart = null;
+canvas.addEventListener('pointerdown', (e) => { if (touches.size <= 1) swipeStart = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+canvas.addEventListener('pointerup', (e) => {
+  if (!swipeStart || S.phase !== 'unlocked' || touches.size > 0 || wasMulti) { swipeStart = null; return; }
+  const dx = e.clientX - swipeStart.x, dy = e.clientY - swipeStart.y, dt = performance.now() - swipeStart.t;
+  if (Math.abs(dx) > 80 && Math.abs(dy) < Math.abs(dx) * 0.6 && dt < 500) switchPanel(dx > 0 ? 1 : -1, 'touch');
+  swipeStart = null;
+});
+
+// Cleanup on close
+window.addEventListener('pagehide', () => {
+  stopCamera();
+  wantListen = false; try { rec && rec.abort(); } catch { /* ignore */ }
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if (actx) actx.close();
+  landmarkerP?.then((l) => l.close()).catch(() => {});
+});
+
+/* ───────────────────────── start ───────────────────────── */
+$('#app').dataset.accent = S.accent;
+$('#app').classList.toggle('reduced', S.reduced);
+applyQuality();
+renderAll();
+requestAnimationFrame(frame);
+
+</script>
+
+</body>
+</html>
