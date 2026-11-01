@@ -36,6 +36,7 @@
 }
 .app[data-accent="orange"] { --accent: var(--orange); --accent-soft: rgba(255, 106, 16, 0.14); --line: rgba(255, 106, 16, 0.32); }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
 body { color: var(--text); font-family: var(--font-ui); font-size: 16px; -webkit-font-smoothing: antialiased; user-select: none; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 button, select, input { font: inherit; color: inherit; }
@@ -885,10 +886,15 @@ async function isRealFile(url) {
   catch { return false; }
 }
 async function loadMediaPipe() {
-  let mod;
-  try { mod = await import(`${MP_BASE}/vision_bundle.mjs`); }
-  catch { mod = await import(`${MP_BASE}/+esm`); }
-  return mod.HandLandmarker ? mod : mod.default;
+  // The versioned package root is the import form that works without a bundler; others are fallbacks.
+  for (const url of [MP_BASE, `${MP_BASE}/vision_bundle.mjs`, `${MP_BASE}/+esm`]) {
+    try {
+      const mod = await import(url);
+      const ns = mod.HandLandmarker ? mod : mod.default;
+      if (ns && ns.HandLandmarker && ns.FilesetResolver) return ns;
+    } catch (e) { console.warn('[ulton] MediaPipe import failed for', url, e); }
+  }
+  throw new Error('Could not load the hand-tracking library (network)');
 }
 function getLandmarker() {
   if (!landmarkerP) {
