@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#02040a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ULTON">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>ULTON</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1935,9 +1942,10 @@ function renderBoot() {
     <div class="boot">
       <div class="boot-start" id="bootStart">
         <div class="logo">ULTON</div>
-        <button class="btn btn-primary btn-lg" data-act="init">Initialize</button>
+        <button class="btn btn-primary btn-lg" data-act="init">Call ULTON</button>
         <label class="boot-opt"><input type="checkbox" id="greetOpt" ${S.greeting ? 'checked' : ''}> Spoken greeting</label>
         <p class="note">Tap once to start. ULTON then listens for its name: just say “ULTON”. Allow the microphone when asked.</p>
+        ${canInstall() ? '<button class="btn btn-ghost" data-act="install">Add ULTON to your home screen</button>' : ''}
       </div>
     </div>`;
   $('#greetOpt').addEventListener('change', (e) => updateSetting('greeting', e.target.checked));
@@ -2080,6 +2088,7 @@ function renderControls() {
     <button class="btn ${S.reduced ? 'on' : ''}" data-act="reduced">Reduced motion</button>
     <button class="btn ${S.sound ? 'on' : ''}" data-act="sound">Sound</button>
     <button class="btn swatch" data-act="accent"><i></i>Colour</button>
+    ${canInstall() ? '<button class="btn btn-primary" data-act="install">Install app</button>' : ''}
     <button class="btn" data-act="help">Help</button>
     ${un ? '<button class="btn" data-act="lock">Lock</button>' : ''}
   </nav>`;
@@ -2175,6 +2184,16 @@ function renderHelp() {
         <dt>“When I say good night, say sweet dreams”</dt><dd>Teach replies</dd>
         <dt>“What do you know about me” · “Forget my city”</dt><dd>See or remove what you taught</dd>
       </dl><p class="note">The same commands work typed into the Voice &amp; Chat panel.</p></section>
+    ${embedded ? '' : `<section id="installSec"><h3>Put ULTON on your home screen</h3>
+      <p class="note">${isStandalone() ? 'ULTON is running as an app. Tap its icon any time to call it.' : 'Then one tap on the ULTON icon opens it, and it starts listening for its name.'}</p>
+      ${isStandalone() ? '' : `<ol class="steps">
+        ${isIOS
+          ? '<li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (square with an arrow).</li><li>Choose <b>Add to Home Screen</b>, then <b>Add</b>.</li>'
+          : '<li>Open this page in <b>Chrome</b>.</li><li>Tap <b>Install app</b> below, or the <b>⋮</b> menu → <b>Add to Home screen</b> / <b>Install app</b>.</li><li>Confirm with <b>Install</b>.</li>'}
+        <li>Open ULTON from the new icon and tap <b>Call ULTON</b>.</li>
+      </ol>
+      ${installEvt ? '<button class="btn btn-primary" data-act="install">Install app</button>' : ''}`}
+    </section>`}
     <section id="setupSec"><h3>Camera and voice: use your own site</h3>
       <p class="note">${embedded ? '<b>You are viewing ULTON inside Claude.</b> Claude blocks the camera and microphone for every page, so gestures and voice cannot work here. Touch, mouse and keyboard controls still work.' : 'You are on your own copy, so camera and voice can work here.'}</p>
       <ol class="steps">
@@ -2244,6 +2263,7 @@ document.addEventListener('click', (e) => {
     case 'tab': S.active = Number(t.dataset.i); S.expanded = true; layoutPanels(); break;
     case 'reset-layout': S.panels.forEach((p) => { p.dx = 0; p.dy = 0; p.scale = 1; }); S.orbScale = 1; S.selPanel = null; layoutPanels(); log('Layout reset', 'system'); break;
     case 'forget': { const kind = t.dataset.kind; if (MEM[kind]) { delete MEM[kind][t.dataset.k]; saveMem(); } break; }
+    case 'install': installApp(); break;
     case 'setup': S.help = true; renderHelp(); setTimeout(() => $('#setupSec')?.scrollIntoView({ block: 'start' }), 50); break;
   }
 });
@@ -2352,6 +2372,29 @@ window.addEventListener('pagehide', () => {
   if (actx) actx.close();
   landmarkerP?.then((l) => l.close()).catch(() => {});
 });
+
+/* ───────────────────────── install as a phone app ───────────────────────── */
+let installEvt = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const canInstall = () => !embedded && !isStandalone();
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; renderControls(); });
+window.addEventListener('appinstalled', () => { installEvt = null; toast('ULTON is installed. Open it from your home screen.', 'ok'); renderControls(); });
+if (!embedded && 'serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').catch(() => { /* offline support is optional */ });
+}
+async function installApp() {
+  if (installEvt) {
+    installEvt.prompt();
+    const choice = await installEvt.userChoice.catch(() => null);
+    installEvt = null;
+    if (choice && choice.outcome === 'accepted') toast('Installing ULTON…', 'ok');
+    renderControls();
+    return;
+  }
+  S.help = true; renderHelp();
+  setTimeout(() => $('#installSec')?.scrollIntoView({ block: 'start' }), 50);
+}
 
 /* ───────────────────────── start ───────────────────────── */
 $('#app').dataset.accent = S.accent;
