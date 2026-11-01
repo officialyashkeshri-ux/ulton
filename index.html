@@ -234,6 +234,8 @@ button, select, input { font: inherit; color: inherit; }
 .toast { padding: 10px 14px; font-size: 14px; line-height: 1.35; background: var(--glass); border-left: 3px solid var(--accent); backdrop-filter: blur(8px); animation: toastin .25s ease-out; }
 .toast.ok { border-color: var(--ok); }
 .toast.link { pointer-events: auto; }
+.toast.action { padding: 8px 0; background: transparent; border-left: 0; backdrop-filter: none; -webkit-backdrop-filter: none; display: flex; justify-content: flex-end; }
+.toast.action .btn { font-size: 16px; padding: 12px 18px; text-decoration: none; white-space: normal; max-width: 100%; min-width: 0; text-align: left; overflow-wrap: anywhere; color: #001018; background: var(--accent); box-shadow: 0 0 24px var(--accent-soft); }
 .toast a { color: var(--accent); font-weight: 700; text-underline-offset: 3px; } .toast.warn { border-color: var(--warn); } .toast.error { border-color: var(--danger); }
 @keyframes toastin { from { opacity: 0; transform: translateX(20px); } }
 .help { position: absolute; inset: 0; z-index: 40; background: rgba(0,0,0,.65); display: grid; place-items: center; padding: calc(16px + var(--gt)) var(--gr) calc(16px + var(--gb)) var(--gl); }
@@ -1357,15 +1359,15 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 function parseMath(t) {
   if (!/\d/.test(t)) return null;
   let e = ` ${t.toLowerCase()} `
-    .replace(/\b(what is|whats|what s|calculate|solve|kitna hai|kitna|equals|equal to|how much is)\b/g, ' ')
+    .replace(/\b(what is|whats|what s|calculate|solve|kitna hota hai|kitne hote hain|kitna hai|kitna|batao|equals|equal to|how much is)\b/g, ' ')
     .replace(/(\d+(?:\.\d+)?)\s*(?:%|percent)\s*of\s*(\d+(?:\.\d+)?)/g, '($1/100*$2)')
     .replace(/square root of\s*(\d+(?:\.\d+)?)/g, 'Q($1)')
     .replace(/(\d+(?:\.\d+)?)\s*squared/g, '($1**2)')
     .replace(/(\d+(?:\.\d+)?)\s*cubed/g, '($1**3)')
     .replace(/\bto the power of\b|\^/g, '**')
     .replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-')
-    .replace(/\b(times|multiplied by|into|x)\b|×/g, '*')
-    .replace(/\b(divided by|over)\b|÷/g, '/')
+    .replace(/\b(times|multiplied by|into|x|guna)\b|×/g, '*')
+    .replace(/\b(divided by|over|bhag|divide)\b|÷/g, '/')
     .replace(/(\d),(\d)/g, '$1$2');
   const expr = e.replace(/\s+/g, '');
   if (!/^[0-9+\-*/().Q]+$/.test(expr) || !/[+\-*/Q]/.test(expr.replace(/^-/, ''))) return null;
@@ -1486,6 +1488,114 @@ function startTimer(sec, label) {
 }
 const UNIT_SEC = { second: 1, sec: 1, seconds: 1, secs: 1, minute: 60, min: 60, minutes: 60, mins: 60, hour: 3600, hr: 3600, hours: 3600, hrs: 3600 };
 
+/* ---- opening apps & websites on THIS device ---- */
+// Tries to open right away; if the browser blocks it (common for voice), shows a big tap-to-open button.
+function openTarget(url, label, src) {
+  log(`Open ${label}`, src || 'voice');
+  let w = null;
+  try { w = window.open(url, '_blank'); if (w) w.opener = null; } catch { w = null; }
+  if (w) { reply(`Opening ${label}.`); return; }
+  reply(`Tap the button to open ${label}.`);
+  actionButton(`Open ${label}`, url);
+}
+function actionButton(label, href) {
+  const el = document.createElement('div');
+  el.className = 'toast ok link action';
+  el.innerHTML = `<a class="btn btn-primary" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`;
+  const box = $('#toasts');
+  box.querySelectorAll('.toast.action').forEach((n) => n.remove());
+  box.appendChild(el);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => el.remove(), 20000);
+}
+const enc = encodeURIComponent;
+const APPS = {
+  whatsapp: { label: 'WhatsApp', url: () => (isMobile ? 'https://wa.me/' : 'https://web.whatsapp.com/') },
+  youtube: { label: 'YouTube', url: () => 'https://www.youtube.com/', search: (q) => `https://www.youtube.com/results?search_query=${enc(q)}` },
+  instagram: { label: 'Instagram', url: () => 'https://www.instagram.com/', search: (q) => `https://www.instagram.com/explore/search/keyword/?q=${enc(q)}` },
+  facebook: { label: 'Facebook', url: () => 'https://www.facebook.com/', search: (q) => `https://www.facebook.com/search/top?q=${enc(q)}` },
+  google: { label: 'Google', url: () => 'https://www.google.com/', search: (q) => `https://www.google.com/search?q=${enc(q)}` },
+  gmail: { label: 'Gmail', url: () => 'https://mail.google.com/' },
+  maps: { label: 'Google Maps', url: () => 'https://maps.google.com/', search: (q) => `https://www.google.com/maps/search/${enc(q)}` },
+  drive: { label: 'Google Drive', url: () => 'https://drive.google.com/' },
+  photos: { label: 'Google Photos', url: () => 'https://photos.google.com/' },
+  translate: { label: 'Google Translate', url: () => 'https://translate.google.com/' },
+  spotify: { label: 'Spotify', url: () => 'https://open.spotify.com/', search: (q) => `https://open.spotify.com/search/${enc(q)}` },
+  telegram: { label: 'Telegram', url: () => (isMobile ? 'https://t.me/' : 'https://web.telegram.org/') },
+  twitter: { label: 'X (Twitter)', url: () => 'https://x.com/', search: (q) => `https://x.com/search?q=${enc(q)}` },
+  linkedin: { label: 'LinkedIn', url: () => 'https://www.linkedin.com/', search: (q) => `https://www.linkedin.com/search/results/all/?keywords=${enc(q)}` },
+  snapchat: { label: 'Snapchat', url: () => 'https://www.snapchat.com/' },
+  pinterest: { label: 'Pinterest', url: () => 'https://www.pinterest.com/', search: (q) => `https://www.pinterest.com/search/pins/?q=${enc(q)}` },
+  reddit: { label: 'Reddit', url: () => 'https://www.reddit.com/', search: (q) => `https://www.reddit.com/search/?q=${enc(q)}` },
+  netflix: { label: 'Netflix', url: () => 'https://www.netflix.com/' },
+  amazon: { label: 'Amazon', url: () => 'https://www.amazon.in/', search: (q) => `https://www.amazon.in/s?k=${enc(q)}` },
+  flipkart: { label: 'Flipkart', url: () => 'https://www.flipkart.com/', search: (q) => `https://www.flipkart.com/search?q=${enc(q)}` },
+  wikipedia: { label: 'Wikipedia', url: () => 'https://en.wikipedia.org/', search: (q) => `https://en.wikipedia.org/w/index.php?search=${enc(q)}` },
+  chatgpt: { label: 'ChatGPT', url: () => 'https://chatgpt.com/' },
+  claude: { label: 'Claude', url: () => 'https://claude.ai/' },
+  github: { label: 'GitHub', url: () => 'https://github.com/', search: (q) => `https://github.com/search?q=${enc(q)}` },
+  canva: { label: 'Canva', url: () => 'https://www.canva.com/' },
+  capcut: { label: 'CapCut', url: () => 'https://www.capcut.com/' },
+  fiverr: { label: 'Fiverr', url: () => 'https://www.fiverr.com/', search: (q) => `https://www.fiverr.com/search/gigs?query=${enc(q)}` },
+  upwork: { label: 'Upwork', url: () => 'https://www.upwork.com/', search: (q) => `https://www.upwork.com/nx/search/jobs/?q=${enc(q)}` },
+  hotstar: { label: 'JioHotstar', url: () => 'https://www.hotstar.com/' },
+  zomato: { label: 'Zomato', url: () => 'https://www.zomato.com/' },
+  swiggy: { label: 'Swiggy', url: () => 'https://www.swiggy.com/' },
+};
+const APP_ALIASES = {
+  'whats app': 'whatsapp', wa: 'whatsapp', 'you tube': 'youtube', yt: 'youtube', insta: 'instagram', fb: 'facebook',
+  'google maps': 'maps', map: 'maps', 'gmail app': 'gmail', mail: 'gmail', 'google drive': 'drive', x: 'twitter',
+  'google photos': 'photos', 'chat gpt': 'chatgpt', 'cap cut': 'capcut', 'jio hotstar': 'hotstar', 'disney hotstar': 'hotstar',
+  snap: 'snapchat', 'google translate': 'translate',
+};
+function findApp(name) {
+  const n = name.trim().replace(/\s+(?:app|application|website|site)$/, '').trim();
+  const key = APPS[n] ? n : APP_ALIASES[n];
+  return key ? { key, ...APPS[key] } : null;
+}
+const OPEN_VERB = '(?:open|launch|start|kholo|khol do|chalao|open karo|kholna)';
+
+/* ---- time in any city ---- */
+const CITY_TZ = {
+  india: 'Asia/Kolkata', usa: 'America/New_York', america: 'America/New_York', uk: 'Europe/London', england: 'Europe/London',
+  'new york': 'America/New_York', 'los angeles': 'America/Los_Angeles', 'san francisco': 'America/Los_Angeles', seattle: 'America/Los_Angeles',
+  chicago: 'America/Chicago', houston: 'America/Chicago', dallas: 'America/Chicago', miami: 'America/New_York', boston: 'America/New_York',
+  washington: 'America/New_York', toronto: 'America/Toronto', canada: 'America/Toronto', vancouver: 'America/Vancouver',
+  london: 'Europe/London', paris: 'Europe/Paris', france: 'Europe/Paris', berlin: 'Europe/Berlin', germany: 'Europe/Berlin',
+  rome: 'Europe/Rome', madrid: 'Europe/Madrid', amsterdam: 'Europe/Amsterdam', moscow: 'Europe/Moscow', russia: 'Europe/Moscow',
+  dubai: 'Asia/Dubai', uae: 'Asia/Dubai', 'abu dhabi': 'Asia/Dubai', riyadh: 'Asia/Riyadh', 'saudi arabia': 'Asia/Riyadh', doha: 'Asia/Qatar',
+  karachi: 'Asia/Karachi', lahore: 'Asia/Karachi', pakistan: 'Asia/Karachi', dhaka: 'Asia/Dhaka', bangladesh: 'Asia/Dhaka',
+  kathmandu: 'Asia/Kathmandu', nepal: 'Asia/Kathmandu', colombo: 'Asia/Colombo', 'sri lanka': 'Asia/Colombo',
+  bangkok: 'Asia/Bangkok', singapore: 'Asia/Singapore', 'kuala lumpur': 'Asia/Kuala_Lumpur', jakarta: 'Asia/Jakarta',
+  'hong kong': 'Asia/Hong_Kong', beijing: 'Asia/Shanghai', shanghai: 'Asia/Shanghai', china: 'Asia/Shanghai',
+  tokyo: 'Asia/Tokyo', japan: 'Asia/Tokyo', seoul: 'Asia/Seoul', korea: 'Asia/Seoul', sydney: 'Australia/Sydney',
+  melbourne: 'Australia/Melbourne', australia: 'Australia/Sydney', auckland: 'Pacific/Auckland', cairo: 'Africa/Cairo',
+  nairobi: 'Africa/Nairobi', johannesburg: 'Africa/Johannesburg', 'sao paulo': 'America/Sao_Paulo', 'mexico city': 'America/Mexico_City',
+};
+const INDIAN_CITIES = 'jaipur delhi new delhi mumbai bombay kolkata calcutta chennai madras bangalore bengaluru hyderabad pune ahmedabad surat lucknow kanpur nagpur indore bhopal patna ranchi jodhpur udaipur kota ajmer bikaner agra varanasi prayagraj allahabad noida gurgaon gurugram ghaziabad faridabad chandigarh amritsar ludhiana dehradun shimla srinagar jammu goa panaji kochi trivandrum thiruvananthapuram mysore mysuru coimbatore madurai visakhapatnam vizag vijayawada guwahati shillong bhubaneswar cuttack raipur nashik aurangabad rajkot vadodara meerut gwalior jabalpur'.split(' ');
+function cityTimeZone(city) {
+  const c = city.toLowerCase().trim();
+  if (CITY_TZ[c]) return CITY_TZ[c];
+  if (INDIAN_CITIES.includes(c) || INDIAN_CITIES.includes(c.split(' ')[0])) return 'Asia/Kolkata';
+  return null;
+}
+async function timeInCity(cityRaw) {
+  const city = cityRaw.replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
+  let tz = cityTimeZone(cityRaw), place = city;
+  if (!tz && canFetch()) {
+    const g = await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${enc(cityRaw)}&count=1&language=en&format=json`);
+    const p = g && g.results && g.results[0];
+    if (p && p.timezone) { tz = p.timezone; place = `${p.name}${p.country ? ', ' + p.country : ''}`; }
+  }
+  if (!tz) return null;
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-IN', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+  const day = now.toLocaleDateString('en-IN', { timeZone: tz, weekday: 'long' });
+  const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const same = now.toLocaleString('en-US', { timeZone: tz }) === now.toLocaleString('en-US', { timeZone: here });
+  return `In ${place} it’s ${time}, ${day}.${same ? ' Same time as here.' : ''}`;
+}
+
 /* ---- commands & skills (matched against the normalized text) ---- */
 const COMMANDS = [
   { re: /\b(stop listening|stop voice|voice off|mic off|sunna band|band karo)\b/, run: () => { reply('Voice control off.'); stopVoice(); } },
@@ -1505,25 +1615,33 @@ const COMMANDS = [
       const label = `${n} ${u.replace(/s$/, '')}${n === 1 ? '' : 's'}`;
       startTimer(sec, label); reply(`Timer set for ${label}.`);
     } },
-  { re: /\b(?:play|search)\s+(.+?)\s+(?:on|in)\s+youtube\b|\byoutube\s+(?:pe|par|on)\s+(.+?)\s+(?:chalao|lagao|play|dikhao)\b/, run: (m, src) => {
-      const q = (m[1] || m[2]).trim();
-      log(`Voice → YouTube search “${q}”`, src);
-      reply(`Tap the link to see “${q}” on YouTube.`);
-      toastLink('YouTube:', `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, `Search “${q}”`);
+  { re: /\btime\b.*\b(?:in|at)\s+([a-z][a-z .]*?)(?:\s+(?:now|right now|abhi|please|kya hai|kya))*$|^([a-z][a-z .]*?)\s+(?:mai|mein|me|main|ka|ki)\s+(?:abhi\s+)?(?:kya\s+)?(?:time|samay|kitne baje|baje)\b/, run: async (m) => {
+      const city = (m[1] || m[2]).trim();
+      const r = await timeInCity(city);
+      reply(r || `I don’t know the time zone for ${city} yet.${canFetch() ? '' : ' On your own ULTON site I can look it up online.'}`);
     } },
-  { re: /\byoutube\b/, run: (m, src) => {
-      log('Voice → open YouTube', src);
-      reply('Tap the link to open YouTube on this device.');
-      toastLink('YouTube:', 'https://www.youtube.com', 'Open on this device');
+  { re: /\bwhatsapp\b\s+(?:message\s+|msg\s+)?(?:to\s+|ko\s+)?(\+?\d[\d -]{8,}\d)\s+(?:saying\s+|that\s+|ki\s+)?(.+)$/, run: (m, src) => {
+      let num = m[1].replace(/\D/g, '');
+      if (num.length === 10) num = `91${num}`;
+      openTarget(`https://wa.me/${num}?text=${enc(m[2])}`, `WhatsApp chat with ${m[1].trim()}`, src);
     } },
-  { re: /\b(?:open|go to|kholo|visit)\s+(?:the\s+)?(?:website\s+)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/, run: (m, src) => {
-      log(`Voice → open ${m[1]}`, src);
-      reply(`Tap the link to open ${m[1]} on this device.`);
-      toastLink(`${m[1]}:`, `https://${m[1]}`, 'Open on this device');
+  { re: /^(?:call|phone|dial|call karo)\s+(\+?\d[\d -]{5,}\d)$/, run: (m, src) => openTarget(`tel:${m[1].replace(/[^\d+]/g, '')}`, `a call to ${m[1].trim()}`, src) },
+  { re: /^(?:navigate|directions?|route|rasta)\s+(?:to\s+)?(.+)$|^(.+?)\s+(?:ka|ki)\s+rasta(?:\s+batao)?$/, run: (m, src) => {
+      const d = (m[1] || m[2]).trim();
+      openTarget(`https://www.google.com/maps/dir/?api=1&destination=${enc(d)}`, `directions to ${d}`, src);
     } },
-  { re: /^(?:search(?:\s+for)?|google|look\s+up)\s+(.+)$/, run: (m) => {
-      reply(`Here is a Google search for ${m[1]}.`);
-      toastLink('Google:', `https://www.google.com/search?q=${encodeURIComponent(m[1])}`, `Search “${m[1]}”`);
+  { re: /^(?:search|search for|find|play|dhundo)\s+(.+?)\s+(?:on|in|pe|par)\s+([a-z ]+?)$/, test: (m) => !!findApp(m[2])?.search, run: (m, src) => {
+      const a = findApp(m[2]); openTarget(a.search(m[1].trim()), `${a.label} search for “${m[1].trim()}”`, src);
+    } },
+  { re: new RegExp(`^(?:${OPEN_VERB}\\s+)?([a-z ]+?)\\s+(?:and\\s+)?(?:search for|search|find|play|pe search karo|par search karo|pe|par|me|mein)\\s+(?:for\\s+)?(.+?)(?:\\s+(?:search karo|chalao|lagao|dikhao|karo|dhundo))?$`), test: (m) => !!findApp(m[1])?.search, run: (m, src) => {
+      const a = findApp(m[1]); openTarget(a.search(m[2].trim()), `${a.label} search for “${m[2].trim()}”`, src);
+    } },
+  { re: new RegExp(`^${OPEN_VERB}\\s+(?:the\\s+)?(.+)$|^(.+?)\\s+${OPEN_VERB}$|^(?:open\\s+)?(.+?)\\s+app$|^([a-z ]+)$`), test: (m) => !!findApp(m[1] || m[2] || m[3] || m[4]), run: (m, src) => {
+      const a = findApp(m[1] || m[2] || m[3] || m[4]); openTarget(a.url(), a.label, src);
+    } },
+  { re: /\b(?:open|go to|kholo|visit)\s+(?:the\s+)?(?:website\s+)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/, run: (m, src) => openTarget(`https://${m[1]}`, m[1], src) },
+  { re: /^(?:search(?:\s+for)?|google|look\s+up)\s+(.+)$|^(.+?)\s+(?:google karo|search karo)$/, run: (m, src) => {
+      const q = (m[1] || m[2]).trim(); openTarget(`https://www.google.com/search?q=${enc(q)}`, `Google search for “${q}”`, src);
     } },
   { re: /\b(this device|connected devices|show (?:my )?devices?|device info)\b/, run: () => needUnlocked(() => {
       showPanel('device');
@@ -1546,7 +1664,7 @@ const COMMANDS = [
   { re: /^(?:make (?:it|the orb) )?(?:bigger|larger|enlarge|zoom in)$/, run: () => { setOrbScale(S.orbScale * 1.25); flash(0.6); reply('Orb enlarged.'); } },
   { re: /^(?:make (?:it|the orb) )?(?:smaller|shrink|zoom out)$/, run: () => { setOrbScale(S.orbScale / 1.25); flash(0.6); reply('Orb reduced.'); } },
   { re: /^(?:help|commands)$|\bwhat can you do\b/, run: () => { S.help = true; renderHelp(); reply('I can chat, answer questions, do maths, convert units, check the weather, set timers, tell jokes, and learn what you teach me.'); } },
-  { re: /\b(joke|make me laugh|kuch funny)\b/, run: () => reply(pick(JOKES)) },
+  { re: /\b(joke|jokes|make me laugh|kuch funny|chutkula)\b/, run: () => reply(pick(JOKES)) },
   { re: /\b(fun fact|random fact|tell me a fact|interesting fact)\b/, run: () => reply(pick(FACTS)) },
   { re: /\b(?:flip|toss) a coin\b|\bcoin (?:flip|toss)\b|\btoss\b/, run: () => reply(`It’s ${Math.random() < 0.5 ? 'heads' : 'tails'}.`) },
   { re: /\broll (?:a |the )?dic?e\b/, run: () => reply(`You rolled a ${1 + Math.floor(Math.random() * 6)}.`) },
@@ -1571,11 +1689,12 @@ const COMMANDS = [
 ];
 
 /* ---- questions and everything else ---- */
-const QUESTION = /^(?:who|what|where|when|why|how|which|tell me|explain|define|is|are|can|does|do|kya|kaun|kahan|kab|kyun|kaise)\b/i;
+const QUESTION = /^(?:who|what|where|when|why|how|which|tell me|explain|define|is|are|can|does|do|kya|kaun|kahan|kab|kyun|kaise)\b|\b(?:kya hai|kya hota hai|kaun hai|kaun tha|kaun thi|ke baare mein|ke bare me|ke bare mein|batao|samjhao)\b/i;
 function topicOf(q) {
   return q
     .replace(/^(?:tell me|explain|search wikipedia for|what do you know)\s+(?:about\s+)?/i, '')
     .replace(/^(?:who|what|where)\s+(?:is|was|are|were)\s+(?:the\s+|a\s+|an\s+)?/i, '')
+    .replace(/\s+(?:kya hai|kya hota hai|kaun hai|kaun tha|kaun thi|ke baare mein batao|ke bare me batao|ke bare mein batao|ke baare mein|ke bare me|ke bare mein|batao|samjhao)$/i, '')
     .replace(/\?+$/, '')
     .trim();
 }
@@ -1586,7 +1705,7 @@ async function answerQuestion(clean, t) {
   if (conv) { reply(conv); return; }
 
   if (/\b(weather|temperature|mausam|forecast)\b/.test(t)) {
-    const m = t.match(/\b(?:in|at|of|for)\s+([a-z][a-z .-]*?)(?:\s+(?:today|now|right now|please))?$/) || t.match(/^([a-z][a-z .-]*?)\s+(?:ka|ki|mein)\s+(?:mausam|weather)/);
+    const m = t.match(/\b(?:in|at|of|for)\s+([a-z][a-z .-]*?)(?:\s+(?:today|now|right now|please))?$/) || t.match(/^([a-z][a-z .-]*?)\s+(?:ka|ki|mein|mai|me|main)\s+(?:aaj\s+)?(?:ka\s+)?(?:mausam|weather|temperature)/);
     const city = ((m && m[1].trim()) || (lookupFact('my city') || {}).value || '').replace(/\b[a-z]/g, (c) => c.toUpperCase());
     if (!city) { reply('Which city? Say “weather in Delhi”, or teach me: “remember that my city is Delhi”.'); return; }
     if (!canFetch()) { await viaAIOr(clean, embedded ? 'Live weather works on your own ULTON site, not inside Claude.' : 'I need an internet connection for the weather.'); return; }
@@ -1615,7 +1734,7 @@ async function answerQuestion(clean, t) {
     removeChat(id);
     if (a) { reply(a); return; }
   }
-  if (QUESTION.test(clean) && canFetch()) {
+  if ((QUESTION.test(clean) || clean.split(/\s+/).length <= 4) && canFetch()) {
     const topic = topicOf(clean);
     if (topic) {
       const id = addChat('ulton', 'Searching Wikipedia…');
@@ -1626,7 +1745,7 @@ async function answerQuestion(clean, t) {
   }
   reply('I don’t know that yet.',
     `You can teach me: “remember that X is Y”, or “when I say X, say Y”.${canFetch() ? '' : embedded ? ' Online answers work on your own ULTON site.' : ' Connect to the internet for Wikipedia answers.'}`);
-  if (!embedded) toastLink('Search the web:', `https://www.google.com/search?q=${encodeURIComponent(clean)}`, 'Google it');
+  if (!embedded) actionButton(`Google “${clean}”`, `https://www.google.com/search?q=${encodeURIComponent(clean)}`);
 }
 async function viaAIOr(clean, msg) {
   if (await getAI()) { const id = addChat('ulton', 'Thinking…'); const a = await askAI(clean); removeChat(id); if (a) { reply(a); return; } }
@@ -1653,7 +1772,7 @@ async function think(raw, src) {
   }
   for (const c of COMMANDS) {
     const m = t.match(c.re);
-    if (m) { await c.run(m, src); return; }
+    if (m && (!c.test || c.test(m))) { await c.run(m, src, clean); return; }
   }
   await answerQuestion(clean, t);
 }
