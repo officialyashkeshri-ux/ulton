@@ -156,6 +156,18 @@ button, select, input { font: inherit; color: inherit; }
 .v-form { display: flex; gap: 8px; min-width: 0; }
 .v-form input { flex: 1; min-width: 0; padding: 8px 10px; background: #06121c; border: 1px solid var(--line); color: var(--text); font-size: 15px; user-select: text; -webkit-user-select: text; }
 .v-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.teach { border: 1px solid var(--line); background: rgba(0,0,0,.2); }
+.teach summary { cursor: pointer; padding: 8px 10px; font-family: var(--font-display); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--accent); }
+.teach summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.teach > .note { padding: 0 10px; }
+.teach-form { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; padding: 4px 10px 8px; min-width: 0; }
+.teach-form label { font-size: 13px; color: var(--muted); }
+.teach-form input { min-width: 0; padding: 7px 9px; background: #06121c; border: 1px solid var(--line); color: var(--text); font-size: 15px; user-select: text; -webkit-user-select: text; }
+.teach-form .btn { grid-column: 2; justify-self: start; }
+.taught { list-style: none; margin: 0; padding: 6px 10px 10px; display: grid; gap: 4px; font-size: 13px; }
+.taught li { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px dashed rgba(255,255,255,.07); padding-bottom: 3px; }
+.taught li span { min-width: 0; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.taught li.empty { color: var(--muted); }
 .panel.active { border-color: var(--accent); box-shadow: 0 0 24px var(--accent-soft); z-index: 2; }
 .panel.sel { box-shadow: 0 0 0 2px var(--orange), 0 0 30px rgba(255,106,16,.35); z-index: 3; }
 .panels.collapsed .panel { opacity: 0; pointer-events: none; }
@@ -1205,14 +1217,20 @@ function stopVoice() {
 
 /* commands — work by voice or typed into the chat box */
 function addChat(who, text, src) {
-  S.chat = [...S.chat, { id: nextId++, who, text, src, t: Date.now() }].slice(-30);
+  const id = nextId++;
+  S.chat = [...S.chat, { id, who, text, src, t: Date.now() }].slice(-30);
+  renderVoice();
+  return id;
+}
+function removeChat(id) {
+  S.chat = S.chat.filter((m) => m.id !== id);
   renderVoice();
 }
 const panelVisible = (id) => S.phase === 'unlocked' && S.expanded && S.panels[S.active]?.id === id;
 function reply(spoken, extra) {
   addChat('ulton', extra ? `${spoken} ${extra}` : spoken);
-  if (S.voiceReplies) speak(spoken);
-  if (!panelVisible('voice')) toast(spoken);
+  if (S.voiceReplies) speak(firstSentences(spoken, 2));
+  if (!panelVisible('voice')) toast(firstSentences(spoken, 2));
 }
 function showPanel(id) {
   const i = S.panels.findIndex((p) => p.id === id);
@@ -1231,17 +1249,244 @@ function toastLink(text, href, label) {
   while (box.children.length > 4) box.firstChild.remove();
   setTimeout(() => el.remove(), 9000);
 }
+/* ───────────────────────── ULTON brain ─────────────────────────
+   Order of thinking for every message (voice or typed):
+   1. replies you taught it   2. remember / forget   3. commands & built-in skills
+   4. questions: your facts → calculator → units → weather → dictionary → AI (inside Claude) → Wikipedia (own site)
+   Everything you teach is kept only in this browser on this device. */
+const WAKE = /\b(?:(?:hey|ok|okay)\s+)?(?:ulton|alton|ultron|olton|elton|hulton)\b[,.!]?/gi;
+function cleanText(raw) {
+  return String(raw).replace(WAKE, ' ').replace(/\s+/g, ' ').replace(/^[\s,.!?]+|[\s,.!?]+$/g, '').trim();
+}
 function normalizeCommand(t) {
   return t.toLowerCase()
     .replace(/\s+dot\s+/g, '.')
     .replace(/\.(?![a-z0-9])/g, ' ')
-    .replace(/[,!?'"“”]/g, ' ')
+    .replace(/[,!?'"“”’]/g, ' ')
     .replace(/\b(hey|ok|okay)\s+(ulton|alton|ultron|olton|elton|hulton)\b/g, ' ')
     .replace(/\b(ulton|alton|ultron|olton|elton|hulton)\b/g, ' ')
     .replace(/\bcolor\b/g, 'colour')
     .replace(/\s+/g, ' ')
     .trim();
 }
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const youify = (s) => s.replace(/\bmy\b/gi, 'your').replace(/\bmine\b/gi, 'yours').replace(/\bI am\b/gi, 'you are').replace(/\bI\b/g, 'you');
+function firstSentences(text, n = 2) {
+  const parts = String(text).match(/[^.!?]+[.!?]+(\s|$)/g);
+  return parts ? parts.slice(0, n).join('').trim() : String(text);
+}
+
+/* ---- memory: what you teach ULTON (this browser only) ---- */
+const MEM_KEY = 'ulton.memory.v1';
+let MEM = { facts: {}, replies: {} };
+try {
+  const m = JSON.parse(localStorage.getItem(MEM_KEY) || 'null');
+  if (m && typeof m === 'object') MEM = { facts: m.facts || {}, replies: m.replies || {} };
+} catch { /* storage blocked */ }
+function saveMem() {
+  try { localStorage.setItem(MEM_KEY, JSON.stringify(MEM)); } catch { /* storage blocked */ }
+  renderTeach();
+}
+const memKey = (s) => normalizeCommand(s).replace(/^(the|a|an)\s+/, '').trim();
+function lookupFact(subject) {
+  const k = memKey(subject);
+  if (MEM.facts[k]) return MEM.facts[k];
+  const alt = k.startsWith('my ') ? k.slice(3) : `my ${k}`;
+  return MEM.facts[alt] || null;
+}
+const MEMORY_HANDLERS = [
+  { re: /^when\s+i\s+say\s+["“]?(.+?)["”]?\s*,?\s+(?:you\s+)?(?:should\s+)?(?:say|reply|answer|respond(?:\s+with)?|bolna|bolo)\s+["“]?(.+?)["”]?$/i, run: (m) => {
+      MEM.replies[memKey(m[1])] = { label: m[1].trim(), value: m[2].trim() }; saveMem();
+      reply(`Learned. When you say “${m[1].trim()}”, I’ll say “${m[2].trim()}”.`);
+    } },
+  { re: /^(?:please\s+)?(?:remember|yaad\s+rakho|note)\s+(?:that\s+)?(.+?)\s+(?:is|are|was|=|hai)\s+(.+)$/i, run: (m) => {
+      const label = m[1].trim(), value = m[2].trim();
+      MEM.facts[memKey(label)] = { label, value }; saveMem();
+      reply(`Got it. ${cap(youify(label))} is ${value}.`);
+    } },
+  { re: /^(?:remember|yaad\s+rakho)\b(.*)$/i, run: () => reply('Tell me like this: “remember that my city is Delhi”.') },
+  { re: /^(?:forget|bhool\s+jao)\s+(?:everything|all|sab\s+kuch)(?:\s+(?:i\s+taught\s+you|you\s+learned))?$/i, run: () => {
+      MEM = { facts: {}, replies: {} }; saveMem(); reply('Done. I forgot everything you taught me.');
+    } },
+  { re: /^(?:forget|delete|bhool\s+jao)\s+(?:about\s+|that\s+)?(.+)$/i, run: (m) => {
+      const k = memKey(m[1]), alt = k.startsWith('my ') ? k.slice(3) : `my ${k}`;
+      const hit = [k, alt].find((x) => MEM.facts[x] || MEM.replies[x]);
+      if (!hit) { reply(`I don’t have anything saved about ${youify(m[1].trim())}.`); return; }
+      delete MEM.facts[hit]; delete MEM.replies[hit]; saveMem();
+      reply(`Forgotten: ${youify(m[1].trim())}.`);
+    } },
+  { re: /\b(?:what\s+(?:do\s+you\s+know|have\s+i\s+taught\s+you|did\s+i\s+teach\s+you)(?:\s+about\s+me)?|what\s+do\s+you\s+remember)\b/i, run: () => {
+      const f = Object.values(MEM.facts), r = Object.values(MEM.replies);
+      if (!f.length && !r.length) { reply('You haven’t taught me anything yet. Try “remember that my city is Delhi”.'); return; }
+      const parts = [...f.map((x) => `${youify(x.label)} is ${x.value}`), ...r.map((x) => `when you say “${x.label}” I say “${x.value}”`)];
+      reply(`I know ${parts.length} thing${parts.length === 1 ? '' : 's'}.`, `${cap(parts.join('; '))}.`);
+    } },
+  { re: /^(?:what(?:'s|’s|\s+is|\s+are)|who(?:'s|’s|\s+is))\s+(.+?)\??$/i, test: (m) => !!lookupFact(m[1]), run: (m) => {
+      const f = lookupFact(m[1]); reply(`${cap(youify(f.label))} is ${f.value}.`);
+    } },
+];
+
+/* ---- small built-in knowledge ---- */
+const JOKES = [
+  'Why do programmers prefer dark mode? Because light attracts bugs.',
+  'I told my computer I needed a break. It said: no problem, I’ll go to sleep.',
+  'Why did the video editor break up with the timeline? Too many cuts.',
+  'Why was the math book sad? It had too many problems.',
+  'What do you call a fake noodle? An impasta.',
+  'Why don’t skeletons fight each other? They don’t have the guts.',
+  'I would tell you a UDP joke, but you might not get it.',
+  'Parallel lines have so much in common. It’s a shame they’ll never meet.',
+  'Why did the scarecrow win an award? He was outstanding in his field.',
+  'My phone battery and I have a lot in common. We both die at the worst moment.',
+];
+const FACTS = [
+  'Honey never spoils. Edible honey has been found in ancient Egyptian tombs.',
+  'Octopuses have three hearts and blue blood.',
+  'A day on Venus is longer than a year on Venus.',
+  'Bananas are berries, but strawberries are not.',
+  'The Eiffel Tower can grow about 15 centimetres taller in summer heat.',
+  'Your brain uses roughly 20 percent of your body’s energy.',
+  'There are more possible chess games than atoms in the observable universe.',
+  'Light from the Sun takes about 8 minutes and 20 seconds to reach Earth.',
+  'India has the world’s largest postal network.',
+  'Sharks existed before trees.',
+];
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+
+/* ---- calculator (no eval of arbitrary text: only digits and operators reach Function) ---- */
+function parseMath(t) {
+  if (!/\d/.test(t)) return null;
+  let e = ` ${t.toLowerCase()} `
+    .replace(/\b(what is|whats|what s|calculate|solve|kitna hai|kitna|equals|equal to|how much is)\b/g, ' ')
+    .replace(/(\d+(?:\.\d+)?)\s*(?:%|percent)\s*of\s*(\d+(?:\.\d+)?)/g, '($1/100*$2)')
+    .replace(/square root of\s*(\d+(?:\.\d+)?)/g, 'Q($1)')
+    .replace(/(\d+(?:\.\d+)?)\s*squared/g, '($1**2)')
+    .replace(/(\d+(?:\.\d+)?)\s*cubed/g, '($1**3)')
+    .replace(/\bto the power of\b|\^/g, '**')
+    .replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-')
+    .replace(/\b(times|multiplied by|into|x)\b|×/g, '*')
+    .replace(/\b(divided by|over)\b|÷/g, '/')
+    .replace(/(\d),(\d)/g, '$1$2');
+  const expr = e.replace(/\s+/g, '');
+  if (!/^[0-9+\-*/().Q]+$/.test(expr) || !/[+\-*/Q]/.test(expr.replace(/^-/, ''))) return null;
+  try {
+    const v = Function('Q', `"use strict"; return (${expr});`)(Math.sqrt);
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+    return Math.round(v * 1e6) / 1e6;
+  } catch { return null; }
+}
+
+/* ---- unit conversion ---- */
+const UNITS = {};
+const addUnit = (names, kind, factor) => names.forEach((n) => { UNITS[n] = { kind, factor, name: names[0] }; });
+addUnit(['kilometres', 'kilometers', 'kilometre', 'kilometer', 'km', 'kms'], 'len', 1000);
+addUnit(['metres', 'meters', 'metre', 'meter', 'm'], 'len', 1);
+addUnit(['centimetres', 'centimeters', 'centimetre', 'centimeter', 'cm'], 'len', 0.01);
+addUnit(['millimetres', 'millimeters', 'mm'], 'len', 0.001);
+addUnit(['miles', 'mile', 'mi'], 'len', 1609.344);
+addUnit(['feet', 'foot', 'ft'], 'len', 0.3048);
+addUnit(['inches', 'inch', 'in'], 'len', 0.0254);
+addUnit(['yards', 'yard', 'yd'], 'len', 0.9144);
+addUnit(['kilograms', 'kilogram', 'kg', 'kgs', 'kilo', 'kilos'], 'mass', 1);
+addUnit(['grams', 'gram', 'g', 'gm'], 'mass', 0.001);
+addUnit(['pounds', 'pound', 'lb', 'lbs'], 'mass', 0.45359237);
+addUnit(['ounces', 'ounce', 'oz'], 'mass', 0.0283495);
+addUnit(['litres', 'liters', 'litre', 'liter', 'l'], 'vol', 1);
+addUnit(['millilitres', 'milliliters', 'ml'], 'vol', 0.001);
+addUnit(['gallons', 'gallon', 'gal'], 'vol', 3.78541);
+const TEMP = { celsius: 'C', c: 'C', centigrade: 'C', fahrenheit: 'F', f: 'F', kelvin: 'K', k: 'K' };
+function convertUnits(t) {
+  const m = t.toLowerCase().replace(/°/g, ' ').match(/(-?\d+(?:\.\d+)?)\s*(?:degrees?\s+)?([a-z]+)\s+(?:to|in|into|mein)\s+(?:degrees?\s+)?([a-z]+)/);
+  if (!m) return null;
+  const v = parseFloat(m[1]), a = m[2], b = m[3];
+  if (TEMP[a] && TEMP[b]) {
+    const toC = { C: (x) => x, F: (x) => (x - 32) * 5 / 9, K: (x) => x - 273.15 }[TEMP[a]](v);
+    const out = { C: toC, F: toC * 9 / 5 + 32, K: toC + 273.15 }[TEMP[b]];
+    return `${v}°${TEMP[a]} is ${Math.round(out * 100) / 100}°${TEMP[b]}.`;
+  }
+  const ua = UNITS[a], ub = UNITS[b];
+  if (!ua || !ub || ua.kind !== ub.kind) return null;
+  const out = (v * ua.factor) / ub.factor;
+  return `${v} ${ua.name} is ${Math.round(out * 1000) / 1000} ${ub.name}.`;
+}
+
+/* ---- online helpers (work on your own site; the Claude view blocks the network) ---- */
+async function fetchJSON(url, ms = 8000) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctl.signal }); if (!r.ok) return null; return await r.json(); }
+  catch { return null; }
+  finally { clearTimeout(t); }
+}
+const canFetch = () => !embedded && navigator.onLine;
+const WMO = { 0: 'clear sky', 1: 'mostly clear', 2: 'partly cloudy', 3: 'overcast', 45: 'fog', 48: 'fog', 51: 'light drizzle', 53: 'drizzle', 55: 'heavy drizzle', 61: 'light rain', 63: 'rain', 65: 'heavy rain', 71: 'light snow', 73: 'snow', 75: 'heavy snow', 80: 'rain showers', 81: 'rain showers', 82: 'heavy rain showers', 95: 'thunderstorm', 96: 'thunderstorm with hail', 99: 'thunderstorm with hail' };
+async function weatherFor(city) {
+  const g = await fetchJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`);
+  const p = g && g.results && g.results[0];
+  if (!p) return null;
+  const w = await fetchJSON(`https://api.open-meteo.com/v1/forecast?latitude=${p.latitude}&longitude=${p.longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m&timezone=auto`);
+  const c = w && w.current;
+  if (!c) return null;
+  return `In ${p.name}${p.country ? ', ' + p.country : ''} it is ${Math.round(c.temperature_2m)}°C with ${WMO[c.weather_code] || 'mixed weather'}. Feels like ${Math.round(c.apparent_temperature)}°C, humidity ${c.relative_humidity_2m}%, wind ${Math.round(c.wind_speed_10m)} km/h.`;
+}
+async function defineWord(word) {
+  const d = await fetchJSON(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+  const m = Array.isArray(d) && d[0] && d[0].meanings && d[0].meanings[0];
+  const def = m && m.definitions && m.definitions[0] && m.definitions[0].definition;
+  return def ? `${cap(word)} (${m.partOfSpeech}): ${def}` : null;
+}
+async function wikiAnswer(topic) {
+  const s = await fetchJSON(`https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(topic)}&limit=1&namespace=0&format=json&origin=*`);
+  const title = s && s[1] && s[1][0];
+  if (!title) return null;
+  const sum = await fetchJSON(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`);
+  if (!sum || !sum.extract || sum.type === 'disambiguation') return null;
+  return { text: sum.extract, url: (sum.content_urls && sum.content_urls.desktop && sum.content_urls.desktop.page) || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}` };
+}
+
+/* ---- AI answers: only inside the Claude viewer, on the viewer's own Claude account ---- */
+let aiPromise = null, aiOff = false, aiTurns = [];
+function getAI() {
+  if (!aiPromise) {
+    aiPromise = window.claude && typeof window.claude.use === 'function'
+      ? window.claude.use('sample').catch(() => null)
+      : Promise.resolve(null);
+  }
+  return aiPromise;
+}
+async function askAI(q) {
+  if (aiOff) return null;
+  const sample = await getAI();
+  if (!sample) return null;
+  const facts = Object.values(MEM.facts).map((f) => `${f.label}: ${f.value}`).join('; ');
+  const rules = `You are ULTON, a friendly voice assistant on ${USER_NAME}'s device. Answer in 1 to 3 short sentences of plain text, with no markdown or lists, because the answer is spoken aloud. If the user writes in Hinglish, answer in simple Hinglish; otherwise answer in English. You cannot browse the web or control any device.${facts ? ` Things the user taught you: ${facts}.` : ''}`;
+  try {
+    const r = await sample([{ role: 'user', content: rules }, ...aiTurns.slice(-6), { role: 'user', content: q }], { modelTier: 'quick', cache: false });
+    const text = r.text.trim();
+    aiTurns.push({ role: 'user', content: q }, { role: 'assistant', content: text });
+    return text;
+  } catch (e) {
+    const code = e && e.code;
+    if (['not_granted', 'sampling_disabled', 'not_declared', 'capability_disabled', 'capability_removed'].includes(code)) aiOff = true;
+    if (code === 'rate_limited') return 'Too many questions right now. Try again in a minute.';
+    return null;
+  }
+}
+
+/* ---- timers ---- */
+let timers = [];
+function startTimer(sec, label) {
+  const id = nextId++;
+  const handle = setTimeout(() => {
+    timers = timers.filter((x) => x.id !== id);
+    flash(1); sfx.online(); setTimeout(() => sfx.online(), 600);
+    reply(`Time’s up! Your ${label} timer is done.`);
+  }, sec * 1000);
+  timers.push({ id, handle, label, end: Date.now() + sec * 1000 });
+}
+const UNIT_SEC = { second: 1, sec: 1, seconds: 1, secs: 1, minute: 60, min: 60, minutes: 60, mins: 60, hour: 3600, hr: 3600, hours: 3600, hrs: 3600 };
+
+/* ---- commands & skills (matched against the normalized text) ---- */
 const COMMANDS = [
   { re: /\b(stop listening|stop voice|voice off|mic off|sunna band|band karo)\b/, run: () => { reply('Voice control off.'); stopVoice(); } },
   { re: /\b(open|show|go to)\b.*\bdashboard\b|\bdashboard\b.*\b(kholo|dikhao)\b|\bunlock\b/, run: (m, src) => {
@@ -1249,52 +1494,168 @@ const COMMANDS = [
       else if (S.phase === 'unlocked') { setExpanded(true, src); reply('Dashboard is open.'); }
       else reply('ULTON is starting up.');
     } },
+  { re: /\b(cancel|stop|clear) (the |all |my )?timers?\b/, run: () => {
+      if (!timers.length) { reply('There is no timer running.'); return; }
+      timers.forEach((x) => clearTimeout(x.handle)); timers = []; reply('Timer cancelled.');
+    } },
+  { re: /\btimer\b.*?(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b|(\d+(?:\.\d+)?)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b.*\btimer\b/, run: (m) => {
+      const n = parseFloat(m[1] || m[3]), u = (m[2] || m[4]).toLowerCase();
+      const sec = Math.round(n * (UNIT_SEC[u] || 60));
+      if (sec < 1 || sec > 86400) { reply('Timers can be from 1 second to 24 hours.'); return; }
+      const label = `${n} ${u.replace(/s$/, '')}${n === 1 ? '' : 's'}`;
+      startTimer(sec, label); reply(`Timer set for ${label}.`);
+    } },
+  { re: /\b(?:play|search)\s+(.+?)\s+(?:on|in)\s+youtube\b|\byoutube\s+(?:pe|par|on)\s+(.+?)\s+(?:chalao|lagao|play|dikhao)\b/, run: (m, src) => {
+      const q = (m[1] || m[2]).trim();
+      log(`Voice → YouTube search “${q}”`, src);
+      reply(`Tap the link to see “${q}” on YouTube.`);
+      toastLink('YouTube:', `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`, `Search “${q}”`);
+    } },
   { re: /\byoutube\b/, run: (m, src) => {
       log('Voice → open YouTube', src);
       reply('Tap the link to open YouTube on this device.');
       toastLink('YouTube:', 'https://www.youtube.com', 'Open on this device');
     } },
   { re: /\b(?:open|go to|kholo|visit)\s+(?:the\s+)?(?:website\s+)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/, run: (m, src) => {
-      const url = `https://${m[1]}`;
       log(`Voice → open ${m[1]}`, src);
       reply(`Tap the link to open ${m[1]} on this device.`);
-      toastLink(`${m[1]}:`, url, 'Open on this device');
+      toastLink(`${m[1]}:`, `https://${m[1]}`, 'Open on this device');
     } },
-  { re: /\bdevices?\b/, run: () => needUnlocked(() => {
+  { re: /^(?:search(?:\s+for)?|google|look\s+up)\s+(.+)$/, run: (m) => {
+      reply(`Here is a Google search for ${m[1]}.`);
+      toastLink('Google:', `https://www.google.com/search?q=${encodeURIComponent(m[1])}`, `Search “${m[1]}”`);
+    } },
+  { re: /\b(this device|connected devices|show (?:my )?devices?|device info)\b/, run: () => needUnlocked(() => {
       showPanel('device');
       reply(`ULTON runs only on this ${deviceInfo().type.toLowerCase()}. It does not connect to any other device.`);
     }) },
-  { re: /\b(orange|cyan|blue)\b/, run: (m) => {
-      const c = m[1] === 'orange' ? 'orange' : 'cyan';
+  { re: /\b(?:colour|theme|rang)\b.*\b(orange|cyan|blue)\b|\b(orange|cyan|blue)\b.*\b(?:colour|theme|mode)\b|^(orange|cyan|blue)$/, run: (m) => {
+      const w = m[1] || m[2] || m[3];
+      const c = w === 'orange' ? 'orange' : 'cyan';
       updateSetting('accent', c); flash(0.8);
       reply(`Colour changed to ${c}.`);
     } },
   { re: /\bcamera\b.*\b(off|stop|disable|band)\b|\b(stop|disable|turn off)\b.*\bcamera\b/, run: () => { disableCamera(); reply('Camera off.'); } },
   { re: /\bcamera\b.*\b(on|start|enable|chalu)\b|\b(start|enable|turn on)\b.*\bcamera\b/, run: () => { reply('Turning on the camera.'); enableCamera(); } },
-  { re: /\b(collapse|minimi[sz]e|hide panels|close (the )?(interface|panels|dashboard)|chota karo)\b/, run: (m, src) => needUnlocked(() => { setExpanded(false, src); reply('Interface collapsed.'); }) },
-  { re: /\b(expand|show panels|bada karo)\b/, run: (m, src) => needUnlocked(() => { setExpanded(true, src); reply('Interface expanded.'); }) },
-  { re: /\bnext( panel)?\b/, run: (m, src) => needUnlocked(() => { switchPanel(1, src); reply(S.panels[S.active].title); }) },
-  { re: /\b(previous|back)( panel)?\b/, run: (m, src) => needUnlocked(() => { switchPanel(-1, src); reply(S.panels[S.active].title); }) },
-  { re: /\b(chat|voice panel)\b/, run: () => needUnlocked(() => { showPanel('voice'); reply('Voice and chat panel open.'); }) },
-  { re: /\block\b/, run: (m, src) => { if (S.phase === 'unlocked') { lockUI(src); reply('Interface locked.'); } else reply('ULTON is already locked.'); } },
-  { re: /\b(bigger|larger|enlarge|zoom in|grow)\b/, run: () => { setOrbScale(S.orbScale * 1.25); flash(0.6); reply('Orb enlarged.'); } },
-  { re: /\b(smaller|shrink|zoom out|reduce)\b/, run: () => { setOrbScale(S.orbScale / 1.25); flash(0.6); reply('Orb reduced.'); } },
-  { re: /\b(help|what can you do|commands)\b/, run: () => { S.help = true; renderHelp(); reply('Here is what I can do.'); } },
-  { re: /\b(time|samay|kitne baje)\b/, run: () => reply(`It is ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`) },
-  { re: /\b(hello|hi|hey|namaste|good (morning|afternoon|evening))\b/, run: () => reply(`Hello ${USER_NAME}. How can I help?`) },
+  { re: /^(?:collapse|minimi[sz]e|hide panels|chota karo)(?: (?:the )?(?:interface|panels|dashboard))?$|\bclose (?:the )?(?:interface|panels|dashboard)\b/, run: (m, src) => needUnlocked(() => { setExpanded(false, src); reply('Interface collapsed.'); }) },
+  { re: /^(?:expand|show panels|bada karo)(?: (?:the )?(?:interface|panels))?$/, run: (m, src) => needUnlocked(() => { setExpanded(true, src); reply('Interface expanded.'); }) },
+  { re: /^(?:go to |show )?(?:the )?next(?: panel)?$/, run: (m, src) => needUnlocked(() => { switchPanel(1, src); reply(S.panels[S.active].title); }) },
+  { re: /^(?:go )?(?:back|previous)(?: panel)?$/, run: (m, src) => needUnlocked(() => { switchPanel(-1, src); reply(S.panels[S.active].title); }) },
+  { re: /^(?:open |show )?(?:the )?(?:chat|voice panel|teach panel)$/, run: () => needUnlocked(() => { showPanel('voice'); reply('Voice and chat panel open.'); }) },
+  { re: /^lock(?: it| (?:the )?(?:screen|interface|ulton))?$/, run: (m, src) => { if (S.phase === 'unlocked') { lockUI(src); reply('Interface locked.'); } else reply('ULTON is already locked.'); } },
+  { re: /^(?:make (?:it|the orb) )?(?:bigger|larger|enlarge|zoom in)$/, run: () => { setOrbScale(S.orbScale * 1.25); flash(0.6); reply('Orb enlarged.'); } },
+  { re: /^(?:make (?:it|the orb) )?(?:smaller|shrink|zoom out)$/, run: () => { setOrbScale(S.orbScale / 1.25); flash(0.6); reply('Orb reduced.'); } },
+  { re: /^(?:help|commands)$|\bwhat can you do\b/, run: () => { S.help = true; renderHelp(); reply('I can chat, answer questions, do maths, convert units, check the weather, set timers, tell jokes, and learn what you teach me.'); } },
+  { re: /\b(joke|make me laugh|kuch funny)\b/, run: () => reply(pick(JOKES)) },
+  { re: /\b(fun fact|random fact|tell me a fact|interesting fact)\b/, run: () => reply(pick(FACTS)) },
+  { re: /\b(?:flip|toss) a coin\b|\bcoin (?:flip|toss)\b|\btoss\b/, run: () => reply(`It’s ${Math.random() < 0.5 ? 'heads' : 'tails'}.`) },
+  { re: /\broll (?:a |the )?dic?e\b/, run: () => reply(`You rolled a ${1 + Math.floor(Math.random() * 6)}.`) },
+  { re: /\brandom number(?: between (\d+) and (\d+))?\b|\bpick a number\b/, run: (m) => {
+      const a = m[1] ? parseInt(m[1], 10) : 1, b = m[2] ? parseInt(m[2], 10) : 100;
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      reply(`Your number is ${lo + Math.floor(Math.random() * (hi - lo + 1))}.`);
+    } },
+  { re: /^(?:what(?:s| s| is) the )?time(?: (?:is it|now|please))?$|\bwhat time is it\b|\bcurrent time\b|\bkitne baje\b|\bkya time\b/, run: () => reply(`It’s ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`) },
+  { re: /\bwhat(?:s| s| is) (?:the |today s |todays )?date\b|\btoday s date\b|\btodays date\b|\baaj ki date\b|^date$/, run: () => reply(`Today is ${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}.`) },
+  { re: /\bwhat day is (?:it|today)\b|\bwhich day is (?:it|today)\b|\bkaun sa din\b/, run: () => reply(`Today is ${new Date().toLocaleDateString('en-IN', { weekday: 'long' })}.`) },
+  { re: /\bbattery\b/, run: () => reply(S.battery ? `Battery is at ${S.battery}.` : 'This browser doesn’t share the battery level.') },
+  { re: /\bwho (?:made|created|built) you\b|\btumhe kisne banaya\b/, run: () => reply(`I was built for ${USER_NAME}, with help from Claude.`) },
+  { re: /\b(?:who are you|what(?:s| s| is) your name|tum kaun ho|aap kaun ho)\b/, run: () => reply(`I’m ULTON, ${USER_NAME}’s personal assistant. I run only on this device.`) },
+  { re: /\bwhat(?:s| s| is) my name\b|\bmera naam kya\b/, run: () => { const f = lookupFact('my name'); reply(`Your name is ${f ? f.value : USER_NAME}.`); } },
+  { re: /\b(?:how are you|how r u|kaise ho|kya haal)\b/, run: () => reply('All systems running smoothly. How can I help?') },
+  { re: /\b(?:thanks|thank you|shukriya|dhanyavaad|dhanyawad)\b/, run: () => reply('You’re welcome.') },
+  { re: /^(?:hello|hi|hey|namaste|hii+|good (?:morning|afternoon|evening))\b/, run: () => {
+      const h = new Date().getHours();
+      reply(`${h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}, ${USER_NAME}. How can I help?`);
+    } },
 ];
+
+/* ---- questions and everything else ---- */
+const QUESTION = /^(?:who|what|where|when|why|how|which|tell me|explain|define|is|are|can|does|do|kya|kaun|kahan|kab|kyun|kaise)\b/i;
+function topicOf(q) {
+  return q
+    .replace(/^(?:tell me|explain|search wikipedia for|what do you know)\s+(?:about\s+)?/i, '')
+    .replace(/^(?:who|what|where)\s+(?:is|was|are|were)\s+(?:the\s+|a\s+|an\s+)?/i, '')
+    .replace(/\?+$/, '')
+    .trim();
+}
+async function answerQuestion(clean, t) {
+  const calc = parseMath(t);
+  if (calc !== null) { reply(`That’s ${calc.toLocaleString('en-IN', { maximumFractionDigits: 6 })}.`); return; }
+  const conv = convertUnits(t);
+  if (conv) { reply(conv); return; }
+
+  if (/\b(weather|temperature|mausam|forecast)\b/.test(t)) {
+    const m = t.match(/\b(?:in|at|of|for)\s+([a-z][a-z .-]*?)(?:\s+(?:today|now|right now|please))?$/) || t.match(/^([a-z][a-z .-]*?)\s+(?:ka|ki|mein)\s+(?:mausam|weather)/);
+    const city = ((m && m[1].trim()) || (lookupFact('my city') || {}).value || '').replace(/\b[a-z]/g, (c) => c.toUpperCase());
+    if (!city) { reply('Which city? Say “weather in Delhi”, or teach me: “remember that my city is Delhi”.'); return; }
+    if (!canFetch()) { await viaAIOr(clean, embedded ? 'Live weather works on your own ULTON site, not inside Claude.' : 'I need an internet connection for the weather.'); return; }
+    const id = addChat('ulton', 'Checking the weather…');
+    const w = await weatherFor(city);
+    removeChat(id);
+    reply(w || `I couldn’t find the weather for ${city}.`);
+    return;
+  }
+
+  const dm = t.match(/^(?:define|meaning of|what is the meaning of|what does)\s+([a-z-]+)(?:\s+mean)?$/);
+  if (dm && canFetch()) {
+    const id = addChat('ulton', 'Looking it up…');
+    const d = await defineWord(dm[1]);
+    removeChat(id);
+    if (d) { reply(d); return; }
+  }
+
+  const my = clean.match(/^(?:what(?:'s|’s|\s+is|\s+are)|who(?:'s|’s|\s+is))\s+(my\s+.+?)\??$/i);
+  if (my && !(await getAI())) { reply(`I don’t know ${youify(my[1])} yet. Teach me: “remember that ${my[1]} is …”.`); return; }
+
+  // Inside Claude: a real AI answer. On your own site: Wikipedia.
+  if (await getAI()) {
+    const id = addChat('ulton', 'Thinking…');
+    const a = await askAI(clean);
+    removeChat(id);
+    if (a) { reply(a); return; }
+  }
+  if (QUESTION.test(clean) && canFetch()) {
+    const topic = topicOf(clean);
+    if (topic) {
+      const id = addChat('ulton', 'Searching Wikipedia…');
+      const w = await wikiAnswer(topic);
+      removeChat(id);
+      if (w) { reply(w.text); toastLink('Wikipedia:', w.url, 'Read more'); return; }
+    }
+  }
+  reply('I don’t know that yet.',
+    `You can teach me: “remember that X is Y”, or “when I say X, say Y”.${canFetch() ? '' : embedded ? ' Online answers work on your own ULTON site.' : ' Connect to the internet for Wikipedia answers.'}`);
+  if (!embedded) toastLink('Search the web:', `https://www.google.com/search?q=${encodeURIComponent(clean)}`, 'Google it');
+}
+async function viaAIOr(clean, msg) {
+  if (await getAI()) { const id = addChat('ulton', 'Thinking…'); const a = await askAI(clean); removeChat(id); if (a) { reply(a); return; } }
+  reply(msg);
+}
+let busy = Promise.resolve();
 function handleCommand(raw, src) {
+  // one message at a time, in order
+  busy = busy.then(() => think(raw, src)).catch((e) => console.error(e));
+  return busy;
+}
+async function think(raw, src) {
   const text = String(raw).trim();
   if (!text) return;
   addChat('you', text, src);
+  const clean = cleanText(text);
   const t = normalizeCommand(text);
-  if (!t) { reply('Yes? Try “open dashboard”.'); return; }
+  if (!t) { reply(`Yes, ${USER_NAME}? How can I help?`); return; }
+  const taught = MEM.replies[memKey(clean)];
+  if (taught) { reply(taught.value); return; }
+  for (const h of MEMORY_HANDLERS) {
+    const m = clean.match(h.re);
+    if (m && (!h.test || h.test(m))) { h.run(m); return; }
+  }
   for (const c of COMMANDS) {
     const m = t.match(c.re);
-    if (m) { c.run(m, src); return; }
+    if (m) { await c.run(m, src); return; }
   }
-  reply('I don’t know that command yet.',
-    'Free conversation needs the AI server from Phase B, because an API key can’t be kept safe on a public website. Try “open dashboard”, “show this device” or “change colour to orange”.');
+  await answerQuestion(clean, t);
 }
 
 /* ───────────────────────── rendering (DOM) ───────────────────────── */
@@ -1353,11 +1714,34 @@ function renderLayer() {
     <div class="v-status" id="vStatus"></div>
     <ul class="chat" id="vChat" aria-live="polite"></ul>
     <form class="v-form" id="vForm" autocomplete="off">
-      <input id="vInput" type="text" placeholder="Type a command, e.g. change colour to orange" aria-label="Type a command" enterkeyhint="send">
+      <input id="vInput" type="text" placeholder="Ask or command, e.g. what is 25 times 4" aria-label="Ask ULTON" enterkeyhint="send">
       <button class="btn btn-sm" type="submit">Send</button>
     </form>
+    <details class="teach" id="teachBox">
+      <summary>Teach ULTON</summary>
+      <form class="teach-form" id="teachForm" autocomplete="off">
+        <label for="tWhen">When I say</label>
+        <input id="tWhen" type="text" placeholder="good night" required>
+        <label for="tSay">ULTON replies</label>
+        <input id="tSay" type="text" placeholder="Sweet dreams, Yash" required>
+        <button class="btn btn-sm btn-primary" type="submit">Save</button>
+      </form>
+      <p class="note">Or just say: “remember that my city is Delhi”. Saved only in this browser.</p>
+      <ul class="taught" id="teachList"></ul>
+    </details>
     <p class="note">Voice uses this device’s microphone. Your browser’s speech service turns speech into text (Chrome and Edge do this online). ULTON stores nothing.</p>`;
-  renderHUD(); renderPanelBodies(); renderVoice(); layoutPanels(); renderChip();
+  renderHUD(); renderPanelBodies(); renderVoice(); renderTeach(); layoutPanels(); renderChip();
+}
+function renderTeach() {
+  const ul = $('#teachList');
+  if (!ul) return;
+  const items = [
+    ...Object.entries(MEM.facts).map(([k, f]) => ({ kind: 'facts', k, text: `${cap(youify(f.label))} is ${f.value}` })),
+    ...Object.entries(MEM.replies).map(([k, r]) => ({ kind: 'replies', k, text: `“${r.label}” → “${r.value}”` })),
+  ];
+  ul.innerHTML = items.length
+    ? items.map((i) => `<li><span>${esc(i.text)}</span><button class="btn btn-sm btn-ghost" data-act="forget" data-kind="${i.kind}" data-k="${esc(i.k)}" aria-label="Forget">✕</button></li>`).join('')
+    : '<li class="empty">Nothing taught yet.</li>';
 }
 function renderVoice() {
   const st = $('#vStatus'), ch = $('#vChat');
@@ -1383,7 +1767,7 @@ function renderVoice() {
   });
   ch.innerHTML = S.chat.length
     ? S.chat.slice(-10).map((m) => `<li class="${m.who}"><b>${m.who === 'you' ? 'You' : 'ULTON'}</b>${esc(m.text)}</li>`).join('')
-    : '<li class="ulton"><b>ULTON</b>Say or type a command. Try “open dashboard”, “show this device”, “change colour to orange” or “stop listening”.</li>';
+    : `<li class="ulton"><b>ULTON</b>Ask me anything or give a command. Try “what is 25 times 4”, “weather in Delhi”, “tell me a joke”, “set a timer for 5 minutes”, “who is APJ Abdul Kalam” or “remember that my city is Delhi”.</li>`;
   ch.scrollTop = ch.scrollHeight;
 }
 function renderBoot() {
@@ -1403,7 +1787,7 @@ const BOOT_LINES = [
   'Calibrating holographic display',
   'Running on this device only',
   'Privacy guard active: camera frames stay on this device',
-  'Voice control ready on request; AI chat needs server setup',
+  'Knowledge modules: maths, weather, Wikipedia, and what you teach me',
 ];
 function runBoot() {
   initAudio(); sfx.boot();
@@ -1433,7 +1817,7 @@ function renderHUD() {
     <div class="inds">
       <span class="ind ${cam}" title="${S.camera === 'on' ? 'Camera on, processed locally, not recorded' : 'Camera ' + S.camera}"><i></i>CAM</span>
       <span class="ind ${S.mic === 'listening' ? 'on' : S.mic === 'error' ? 'err' : S.mic === 'requesting' ? 'busy' : ''}" title="Microphone ${S.mic}"><i></i>MIC</span>
-      <span class="ind setup" title="AI chat needs server setup (Phase B)"><i></i>AI</span>
+      <span class="ind ${embedded ? 'on' : ''}" title="${embedded ? 'Answers from Claude in this view' : 'Answers from Wikipedia and built-in skills'}"><i></i>AI</span>
       <span class="clock" id="clock"></span>
     </div>`;
   tickClock();
@@ -1486,7 +1870,8 @@ function renderPanelBodies() {
     <div class="kv"><span>Pinch threshold</span><b>${S.pinchThreshold.toFixed(2)}</b></div>
     <div class="kv"><span>Microphone</span><b class="${S.mic === 'listening' ? 't-ok' : S.mic === 'error' ? 't-err' : 't-dim'}">${S.mic.toUpperCase()}</b></div>
     <div class="kv"><span>Voice engine</span><b class="${SR ? '' : 't-warn'}">${SR ? 'Browser speech' : 'Not supported here'}</b></div>
-    <div class="kv"><span>AI chat</span><b class="t-warn">Needs server setup (Phase B)</b></div>
+    <div class="kv"><span>Answers from</span><b>${embedded ? 'Claude (this view)' : 'Wikipedia + built-in skills'}</b></div>
+    <div class="kv"><span>Things taught</span><b>${Object.keys(MEM.facts).length + Object.keys(MEM.replies).length}</b></div>
     <p class="note">Camera frames are analysed in this browser tab. Nothing is recorded or uploaded.</p>
     <button class="btn btn-sm" data-act="reset-layout">Reset layout</button>`;
   lg.innerHTML = S.log.length
@@ -1617,6 +2002,16 @@ function renderHelp() {
         <dt>“Bigger / smaller” · “Camera on / off” · “Lock”</dt><dd>Orb size, camera, lock</dd>
         <dt>“Stop listening”</dt><dd>Turn the microphone off</dd>
         <dt>Hold V</dt><dd>Push-to-talk on a keyboard</dd>
+        <dt>“What is 25 times 4” · “15% of 200”</dt><dd>Calculator</dd>
+        <dt>“Convert 10 km to miles” · “100 F to C”</dt><dd>Unit conversion</dd>
+        <dt>“Weather in Delhi”</dt><dd>Live weather (own site)</dd>
+        <dt>“Who is APJ Abdul Kalam” · “What is a black hole”</dt><dd>Answers from Wikipedia on your site, or from Claude inside Claude</dd>
+        <dt>“Define curious”</dt><dd>Dictionary meaning (own site)</dd>
+        <dt>“Set a timer for 5 minutes” · “Cancel timer”</dt><dd>Timers</dd>
+        <dt>“Tell me a joke” · “Fun fact” · “Flip a coin” · “Roll a dice”</dt><dd>Fun</dd>
+        <dt>“Remember that my city is Delhi” · “What is my city”</dt><dd>Teach facts</dd>
+        <dt>“When I say good night, say sweet dreams”</dt><dd>Teach replies</dd>
+        <dt>“What do you know about me” · “Forget my city”</dt><dd>See or remove what you taught</dd>
       </dl><p class="note">The same commands work typed into the Voice &amp; Chat panel.</p></section>
     <section id="setupSec"><h3>Camera and voice: use your own site</h3>
       <p class="note">${embedded ? '<b>You are viewing ULTON inside Claude.</b> Claude blocks the camera and microphone for every page, so gestures and voice cannot work here. Touch, mouse and keyboard controls still work.' : 'You are on your own copy, so camera and voice can work here.'}</p>
@@ -1684,6 +2079,7 @@ document.addEventListener('click', (e) => {
     case 'lock': lockUI('touch'); break;
     case 'tab': S.active = Number(t.dataset.i); S.expanded = true; layoutPanels(); break;
     case 'reset-layout': S.panels.forEach((p) => { p.dx = 0; p.dy = 0; p.scale = 1; }); S.orbScale = 1; S.selPanel = null; layoutPanels(); log('Layout reset', 'system'); break;
+    case 'forget': { const kind = t.dataset.kind; if (MEM[kind]) { delete MEM[kind][t.dataset.k]; saveMem(); } break; }
     case 'setup': S.help = true; renderHelp(); setTimeout(() => $('#setupSec')?.scrollIntoView({ block: 'start' }), 50); break;
   }
 });
@@ -1710,6 +2106,15 @@ document.addEventListener('keyup', (e) => {
   if (e.key === 'v' && pushToTalk) { pushToTalk = false; wantListen = false; try { rec && rec.stop(); } catch { /* ignore */ } }
 });
 document.addEventListener('submit', (e) => {
+  if (e.target.id === 'teachForm') {
+    e.preventDefault();
+    const w = $('#tWhen').value.trim(), r = $('#tSay').value.trim();
+    if (!w || !r) return;
+    MEM.replies[memKey(w)] = { label: w, value: r }; saveMem();
+    $('#tWhen').value = ''; $('#tSay').value = '';
+    toast(`Learned: “${w}” → “${r}”`, 'ok');
+    return;
+  }
   if (e.target.id !== 'vForm') return;
   e.preventDefault();
   const inp = $('#vInput');
