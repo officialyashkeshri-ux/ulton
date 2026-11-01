@@ -221,6 +221,8 @@ button, select, input { font: inherit; color: inherit; }
 .app[data-phase="locked"] .bstack { top: calc(25vh + var(--gt)); }
 .listen { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; max-width: 100%; background: var(--glass); border: 1px solid var(--orange); box-shadow: 0 0 20px rgba(255,106,16,.25); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .listen b { font-family: var(--font-mono); font-size: 11px; letter-spacing: .2em; color: var(--orange); }
+.listen.awake { border-color: var(--orange); background: rgba(40,14,2,.85); box-shadow: 0 0 34px rgba(255,106,16,.55); }
+.listen.awake b { color: #fff; }
 #listenText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 .banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; padding: 10px 14px; max-width: 100%; background: rgba(60,6,14,.9); border: 1px solid var(--danger); backdrop-filter: blur(8px); font-size: 15px; line-height: 1.35; }
 .banner span { flex: 1 1 260px; min-width: 0; }
@@ -332,6 +334,8 @@ const defaults = {
   showPreview: false,
   voiceLang: 'en-IN',
   voiceReplies: true,
+  wakeWord: true,
+  autoListen: true,
   cameraId: '',
 };
 let saved = {};
@@ -1143,6 +1147,40 @@ function stepCalibration(f, now) {
 // Uses this device's microphone through the browser's speech recognition.
 // Note: in Chrome/Edge the browser's speech service converts audio to text online.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+// "Call" ULTON by name: in wake-word mode it ignores speech until it hears "ULTON".
+const WAKE_NAMES = 'ulton|alton|ultron|olton|elton|hulton|walton|ul ton|all ton|ulten|alten|ultan';
+const WAKE_TEST = new RegExp(`\\b(?:${WAKE_NAMES})\\b`, 'i');
+let awakeUntil = 0, wakeLock = null;
+async function keepScreenOn(on) {
+  try {
+    if (on && 'wakeLock' in navigator && !wakeLock && document.visibilityState === 'visible') {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch { wakeLock = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.mic === 'listening' && S.wakeWord) keepScreenOn(true); });
+const isAwake = () => performance.now() < awakeUntil;
+function heard(text) {
+  if (!S.wakeWord || pushToTalk) { handleCommand(text, 'voice'); return; }
+  if (isAwake()) { awakeUntil = 0; renderBanner(); handleCommand(text, 'voice'); return; }
+  if (!WAKE_TEST.test(text)) return; // not talking to ULTON
+  const rest = cleanText(text);
+  flash(1);
+  if (!rest) {
+    sfx.blip(true);
+    awakeUntil = performance.now() + 9000;
+    reply(`Yes, ${USER_NAME}?`);
+    renderBanner();
+    setTimeout(() => { if (!isAwake()) renderBanner(); }, 9200);
+    return;
+  }
+  handleCommand(text, 'voice');
+}
+function listenHint() {
+  if (!S.wakeWord || pushToTalk) return 'Say a command, e.g. “open dashboard”';
+  return isAwake() ? 'I’m listening… go ahead' : 'Say “ULTON” to call me';
+}
 let rec = null, wantListen = false, restarts = 0, pushToTalk = false;
 
 function micErrorText(e) {
@@ -1184,17 +1222,17 @@ async function startVoice() {
   rec.continuous = true;
   rec.interimResults = true;
   rec.maxAlternatives = 1;
-  rec.onstart = () => { if (S.mic !== 'listening') { setMic('listening'); log('Voice listening', 'system'); } };
+  rec.onstart = () => { if (S.mic !== 'listening') { setMic('listening'); log('Voice listening', 'system'); if (S.wakeWord) keepScreenOn(true); } };
   rec.onresult = (e) => {
     restarts = 0;
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) { const text = r[0].transcript.trim(); if (text && !speakingNow()) handleCommand(text, 'voice'); }
+      if (r.isFinal) { const text = r[0].transcript.trim(); if (text && !speakingNow()) heard(text); }
       else interim += r[0].transcript;
     }
     S.interim = speakingNow() ? '' : interim;
-    const lt = $('#listenText'); if (lt) lt.textContent = S.interim || 'Say “ULTON, open dashboard”';
+    const lt = $('#listenText'); if (lt) lt.textContent = S.interim || listenHint();
   };
   rec.onerror = (e) => {
     if (e.error === 'no-speech' || e.error === 'aborted') return;
@@ -1203,15 +1241,17 @@ async function startVoice() {
     setMic('error');
   };
   rec.onend = () => {
-    if (wantListen && restarts < 40) {
+    // Browsers stop listening after silence; restart so ULTON keeps waiting for its name.
+    if (wantListen && (S.wakeWord || restarts < 40)) {
       restarts++;
-      setTimeout(() => { if (wantListen) { try { rec.start(); } catch { /* already running */ } } }, 250);
+      setTimeout(() => { if (wantListen) { try { rec.start(); } catch { /* already running */ } } }, restarts > 40 ? 1000 : 250);
     } else if (S.mic !== 'error') { S.interim = ''; setMic('off'); }
   };
   try { rec.start(); } catch (e) { S.micError = micErrorText(e); setMic('error'); }
 }
 function stopVoice() {
-  wantListen = false; pushToTalk = false;
+  wantListen = false; pushToTalk = false; awakeUntil = 0;
+  keepScreenOn(false);
   try { rec && rec.abort(); } catch { /* ignore */ }
   rec = null; S.interim = '';
   if (S.mic !== 'off') setMic('off');
@@ -1256,7 +1296,7 @@ function toastLink(text, href, label) {
    1. replies you taught it   2. remember / forget   3. commands & built-in skills
    4. questions: your facts → calculator → units → weather → dictionary → AI (inside Claude) → Wikipedia (own site)
    Everything you teach is kept only in this browser on this device. */
-const WAKE = /\b(?:(?:hey|ok|okay)\s+)?(?:ulton|alton|ultron|olton|elton|hulton)\b[,.!]?/gi;
+const WAKE = new RegExp(`\\b(?:(?:hey|ok|okay|hello|hi)\\s+)?(?:${WAKE_NAMES})\\b[,.!]?`, 'gi');
 function cleanText(raw) {
   return String(raw).replace(WAKE, ' ').replace(/\s+/g, ' ').replace(/^[\s,.!?]+|[\s,.!?]+$/g, '').trim();
 }
@@ -1265,8 +1305,7 @@ function normalizeCommand(t) {
     .replace(/\s+dot\s+/g, '.')
     .replace(/\.(?![a-z0-9])/g, ' ')
     .replace(/[,!?'"“”’]/g, ' ')
-    .replace(/\b(hey|ok|okay)\s+(ulton|alton|ultron|olton|elton|hulton)\b/g, ' ')
-    .replace(/\b(ulton|alton|ultron|olton|elton|hulton)\b/g, ' ')
+    .replace(new RegExp(`\\b(?:(?:hey|ok|okay|hello|hi)\\s+)?(?:${WAKE_NAMES})\\b`, 'g'), ' ')
     .replace(/\bcolor\b/g, 'colour')
     .replace(/\s+/g, ' ')
     .trim();
@@ -1797,7 +1836,7 @@ function renderLayer() {
         </svg>
         <header class="lock-head"><div class="logo">ULTON</div><div class="lock-sub"><span class="dot-blue"></span>INTERFACE LOCKED</div></header>
         <footer class="lock-foot">
-          <p class="lock-instr">${S.camera === 'on' ? (S.activation === 'palm-hold' ? 'Hold an open palm still toward the camera' : 'Pinch thumb and index finger and hold') : 'Press and hold to unlock'}${S.camera === 'on' ? ', or press and hold the button.' : ' (or hold the Space bar).'}${S.mic === 'listening' ? ' You can also say “ULTON, open dashboard”.' : ''}</p>
+          <p class="lock-instr">${S.camera === 'on' ? (S.activation === 'palm-hold' ? 'Hold an open palm still toward the camera' : 'Pinch thumb and index finger and hold') : 'Press and hold to unlock'}${S.camera === 'on' ? ', or press and hold the button.' : ' (or hold the Space bar).'}${S.mic === 'listening' ? ' Or just say “ULTON, open dashboard”.' : ''}</p>
           <div class="row">
             ${embedded ? '' : S.camera !== 'on' ? `<button class="btn" data-act="camera-on" ${S.camera === 'requesting' || S.camera === 'loading' ? 'disabled' : ''}>${S.camera === 'requesting' ? 'Waiting for permission…' : S.camera === 'loading' ? 'Loading hand model…' : 'Enable Camera'}</button>` : ''}
             <button class="btn btn-primary btn-hold" id="holdBtn">Hold to unlock</button>
@@ -1879,6 +1918,8 @@ function renderVoice() {
         <option value="en-GB" ${S.voiceLang === 'en-GB' ? 'selected' : ''}>English (UK)</option>
       </select></label>
       <button class="btn btn-sm ${S.voiceReplies ? 'on' : ''}" data-act="voice-replies">Spoken replies</button>
+      <button class="btn btn-sm ${S.wakeWord ? 'on' : ''}" data-act="wake-word" title="Only respond after hearing “ULTON”">Call by name</button>
+      <button class="btn btn-sm ${S.autoListen ? 'on' : ''}" data-act="auto-listen" title="Start listening when you tap Initialize">Listen on start</button>
     </div>`;
   $('#vLang').addEventListener('change', (e) => {
     updateSetting('voiceLang', e.target.value);
@@ -1896,7 +1937,7 @@ function renderBoot() {
         <div class="logo">ULTON</div>
         <button class="btn btn-primary btn-lg" data-act="init">Initialize</button>
         <label class="boot-opt"><input type="checkbox" id="greetOpt" ${S.greeting ? 'checked' : ''}> Spoken greeting</label>
-        <p class="note">Sound and speech start after you tap, because browsers block them until then.</p>
+        <p class="note">Tap once to start. ULTON then listens for its name: just say “ULTON”. Allow the microphone when asked.</p>
       </div>
     </div>`;
   $('#greetOpt').addEventListener('change', (e) => updateSetting('greeting', e.target.checked));
@@ -1910,6 +1951,7 @@ const BOOT_LINES = [
 ];
 function runBoot() {
   initAudio(); sfx.boot();
+  if (S.autoListen && !embedded && SR) startVoice();
   layer.querySelector('.boot').innerHTML = `<div class="boot-run"><ul class="boot-lines" id="bootLines" aria-live="polite"></ul><div id="onlineSlot"></div><button class="btn btn-ghost boot-skip" data-act="skip">Skip</button></div>`;
   const step = S.reduced ? 140 : 430;
   BOOT_LINES.forEach((l, i) => bootTimers.push(setTimeout(() => {
@@ -2049,7 +2091,7 @@ function renderBanner() {
   const parts = [];
   if (S.camera === 'error' && S.camError) parts.push(`<div class="banner" role="alert"><span>${esc(S.camError)}</span><button class="btn btn-sm" data-act="camera-on">Retry</button><button class="btn btn-sm btn-ghost" data-act="dismiss">Dismiss</button></div>`);
   if (S.mic === 'error' && S.micError) parts.push(`<div class="banner" role="alert"><span>${esc(S.micError)}</span><button class="btn btn-sm" data-act="mic-on">Retry</button><button class="btn btn-sm btn-ghost" data-act="mic-dismiss">Dismiss</button></div>`);
-  if (S.mic === 'listening') parts.push(`<div class="listen"><span class="rec"></span><b>LISTENING</b><span id="listenText">${esc(S.interim || 'Say “ULTON, open dashboard”')}</span><button class="btn btn-sm btn-ghost" data-act="mic-off">Stop</button></div>`);
+  if (S.mic === 'listening') parts.push(`<div class="listen${isAwake() ? ' awake' : ''}"><span class="rec"></span><b>LISTENING</b><span id="listenText">${esc(S.interim || listenHint())}</span><button class="btn btn-sm btn-ghost" data-act="mic-off">Stop</button></div>`);
   $('#banner').innerHTML = parts.length ? `<div class="bstack">${parts.join('')}</div>` : '';
 }
 function renderCalib() {
@@ -2113,6 +2155,7 @@ function renderHelp() {
       </dl></section>
     </div>
     <section><h3>Voice commands</h3><dl>
+        <dt>Say “ULTON”</dt><dd>Calls ULTON hands-free; it answers “Yes?” and listens for 9 seconds</dd>
         <dt>“ULTON, open dashboard”</dt><dd>Unlock and open the interface</dd>
         <dt>“Show this device”</dt><dd>Open the This Device panel</dd>
         <dt>“Change colour to orange / cyan”</dt><dd>Switch the accent colour</dd>
@@ -2178,13 +2221,15 @@ document.addEventListener('click', (e) => {
   const a = t.dataset.act;
   switch (a) {
     case 'init': runBoot(); break;
-    case 'skip': initAudio(); finishBoot(); break;
+    case 'skip': initAudio(); if (S.autoListen && !embedded && SR && S.mic === 'off') startVoice(); finishBoot(); break;
     case 'camera-on': initAudio(); enableCamera(); break;
     case 'camera-off': disableCamera(); break;
     case 'mic-on': initAudio(); startVoice(); break;
     case 'mic-off': stopVoice(); break;
     case 'mic-dismiss': S.micError = null; setMic('off'); break;
     case 'voice-replies': updateSetting('voiceReplies', !S.voiceReplies); renderVoice(); break;
+    case 'wake-word': updateSetting('wakeWord', !S.wakeWord); awakeUntil = 0; renderVoice(); renderBanner(); toast(S.wakeWord ? 'Say “ULTON” first, then your command.' : 'ULTON will act on everything it hears.'); break;
+    case 'auto-listen': updateSetting('autoListen', !S.autoListen); renderVoice(); break;
     case 'dismiss': S.camError = null; setCamera('off'); break;
     case 'preview': updateSetting('showPreview', !S.showPreview); break;
     case 'calibrate': startCalibration(); break;
