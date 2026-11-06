@@ -22,7 +22,8 @@ CORE = [
     ("imageio_ffmpeg", "imageio-ffmpeg", "bundled ffmpeg fallback"),
 ]
 GRAPHICS = [("skia", "skia-python", "fast 2D vector graphics and text for every frame")]
-SPEECH = [("faster_whisper", "faster-whisper", "transcription with word timestamps")]
+SPEECH = [("faster_whisper", "faster-whisper", "transcription with word timestamps"),
+          ("av", "av>=11,<16", "audio decoding for faster-whisper (PyAV 16+ breaks faster-whisper 1.2)")]
 TTS = [("kokoro_onnx", "kokoro-onnx", "local AI voiceover"), ("soundfile", "soundfile", "wav read/write")]
 VISION = [("cv2", "opencv-python-headless", "tracking, optical flow, image ops")]
 MATTE = [("rembg", "rembg[cpu]", "background removal / person cutouts")]

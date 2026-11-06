@@ -69,6 +69,4 @@ say: …" using `reference/prompt-library.md`.
 
 ## Reference
 `reference/foundations.md` · `reference/brand-kit.md` · `reference/motion-principles.md` · `reference/sound-design.md` ·
-`reference/export-specs.md` · `reference/troubleshooting.md` · `reference/prompt-library.md` · `reference/types/*.md` ·
-`reference/getting-started-guide.md` (student guide: filming tips, the edit loop, copy-paste prompts; its HyperFrames
-steps are optional — this skill's `scripts/` toolkit renders without it)
+`reference/export-specs.md` · `reference/troubleshooting.md` · `reference/prompt-library.md` · `reference/types/*.md`
