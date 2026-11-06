@@ -69,5 +69,4 @@ say: …" using `reference/prompt-library.md`.
 
 ## Reference
 `reference/foundations.md` · `reference/brand-kit.md` · `reference/motion-principles.md` · `reference/sound-design.md` ·
-`reference/export-specs.md` · `reference/troubleshooting.md` · `reference/prompt-library.md` · `reference/types/*.md` ·
-`reference/hyperframes-guide.md` (the companion user guide: HyperFrames + Whisper + FFmpeg workflow, filming tips, copy-paste prompts)
+`reference/export-specs.md` · `reference/troubleshooting.md` · `reference/prompt-library.md` · `reference/types/*.md`
