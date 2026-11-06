@@ -1,0 +1,19 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #F2EEE3; }
+    #stage-cam { position: absolute; inset: 0; transform-origin: 50% 38%; }
+    #stage-take { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  </style>
+  <div id="root" data-composition-id="stage" data-width="1080" data-height="1920">
+    <div id="stage-cam" data-layout-allow-overflow>
+      <video id="stage-take" class="clip" src="assets/take.mp4" data-start="0" data-duration="16.6"
+        data-track-index="0" muted playsinline></video>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    
+tl.set("#stage-cam", { scale: 1.0 }, 0);    tl.to("#stage-cam", { scale: 1.0200, duration: 3.680, ease: "none" }, 0.000);    tl.set("#stage-cam", { scale: 1.0 }, 3.700);    tl.to("#stage-cam", { scale: 1.0200, duration: 0.820, ease: "none" }, 3.700);    tl.set("#stage-cam", { scale: 1.0 }, 4.540);    tl.to("#stage-cam", { scale: 1.0200, duration: 1.600, ease: "none" }, 4.540);    tl.set("#stage-cam", { scale: 1.0 }, 6.160);    tl.to("#stage-cam", { scale: 1.0200, duration: 1.980, ease: "none" }, 6.160);    tl.set("#stage-cam", { scale: 1.0 }, 8.160);    tl.to("#stage-cam", { scale: 1.0200, duration: 1.460, ease: "none" }, 8.160);    tl.set("#stage-cam", { scale: 1.0 }, 9.640);    tl.to("#stage-cam", { scale: 1.0200, duration: 2.400, ease: "none" }, 9.640);    tl.set("#stage-cam", { scale: 1.0 }, 12.060);    tl.to("#stage-cam", { scale: 1.0200, duration: 2.320, ease: "none" }, 12.060);    tl.set("#stage-cam", { scale: 1.0 }, 14.400);    tl.to("#stage-cam", { scale: 1.0200, duration: 1.300, ease: "none" }, 14.400);    tl.set("#stage-cam", { scale: 1.0 }, 15.720);    tl.to("#stage-cam", { scale: 1.0200, duration: 0.960, ease: "none" }, 15.720);
+    window.__timelines["stage"] = tl;
+  </script>
+</template>
