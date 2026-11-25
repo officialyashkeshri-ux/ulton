@@ -1,0 +1,20 @@
+# Single-VM deployment: API + N workers share one volume (SQLite WAL + media). Secrets come from .env (never commit it).
+services:
+  api:
+    build: .
+    env_file: .env
+    ports: ["8080:8080"]
+    volumes: ["overlord-data:/data"]
+    restart: unless-stopped
+  worker:
+    build: .
+    env_file: .env
+    command: ["python", "-m", "overlord.worker"]
+    volumes: ["overlord-data:/data"]
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits: {cpus: "2", memory: 4g}
+volumes:
+  overlord-data:
