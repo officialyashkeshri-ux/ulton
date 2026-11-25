@@ -70,6 +70,9 @@ class DB:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.conn() as c:
             c.executescript(SCHEMA)
+            cols = {r[1] for r in c.execute("PRAGMA table_info(jobs)")}
+            if "rights_ref" not in cols:  # migration: proof of permission for third-party content
+                c.execute("ALTER TABLE jobs ADD COLUMN rights_ref TEXT")
 
     @contextmanager
     def conn(self) -> Iterator[sqlite3.Connection]:
@@ -115,7 +118,7 @@ class DB:
 
     # ---- jobs -----------------------------------------------------------------------------------------------
     def create_job(self, client_id: str, source: str, source_key: str, rights_basis: str, clip_count: int,
-                   min_len: float, max_len: float, priority: int = 5) -> tuple[str, bool]:
+                   min_len: float, max_len: float, priority: int = 5, rights_ref: str | None = None) -> tuple[str, bool]:
         """Returns (job_id, created). An identical request (same client, source, count, lengths) returns the
         existing job instead of creating a duplicate."""
         existing = self.one("SELECT id FROM jobs WHERE client_id=? AND source_key=? AND clip_count=? AND min_len=? "
@@ -124,9 +127,10 @@ class DB:
             return existing["id"], False
         jid = uuid.uuid4().hex[:12]
         now = time.time()
-        self.run("INSERT INTO jobs(id,client_id,source,source_key,rights_basis,clip_count,min_len,max_len,status,"
-                 "priority,created,updated) VALUES(?,?,?,?,?,?,?,?, 'queued', ?,?,?)",
-                 jid, client_id, source, source_key, rights_basis, clip_count, min_len, max_len, priority, now, now)
+        self.run("INSERT INTO jobs(id,client_id,source,source_key,rights_basis,rights_ref,clip_count,min_len,max_len,"
+                 "status,priority,created,updated) VALUES(?,?,?,?,?,?,?,?,?, 'queued', ?,?,?)",
+                 jid, client_id, source, source_key, rights_basis, rights_ref, clip_count, min_len, max_len, priority,
+                 now, now)
         self.audit("api", "job.create", jid, source=source, clip_count=clip_count)
         return jid, True
 

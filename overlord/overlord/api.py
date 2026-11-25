@@ -24,6 +24,7 @@ from . import ingest, learning
 from .config import settings
 from .db import DB
 from .profiles import create_client, get_client, rollback_profile, update_profile, update_publish
+from .publish.publisher import NEEDS_REFERENCE
 
 ST = settings()
 DBI = DB(ST.db_path)
@@ -71,7 +72,8 @@ def chat(m: ChatIn, actor: str = Depends(auth)):
     s = SESS.setdefault(sid, {"client_id": m.client_id})
     text = m.message.strip()
     url = re.search(r"https?://\S+", text)
-    if url or (Path(text).exists() and Path(text).is_file()):
+    awaiting_ref = s.get("rights") in NEEDS_REFERENCE and "rights_ref" not in s  # a campaign URL is not a new source
+    if not awaiting_ref and (url or (Path(text).exists() and Path(text).is_file())):
         src = url.group(0) if url else text
         try:
             pr = ingest.probe(src)
@@ -91,7 +93,17 @@ def chat(m: ChatIn, actor: str = Depends(auth)):
         if text not in ingest.RIGHTS_BASES:
             return {"session": sid, "ask": "rights_basis", "reply": "Please answer with one of: " + ", ".join(ingest.RIGHTS_BASES)}
         s["rights"] = text
-        jid, created = DBI.create_job(s["client_id"], s["source"], s["probe"]["key"], text, s["clip_count"], 15, 59)
+        if text in NEEDS_REFERENCE:
+            return {"session": sid, "ask": "rights_ref",
+                    "reply": "This is someone else's content. Paste the clipping-campaign link or the written permission "
+                             "(e.g. a Content Rewards / Whop campaign URL). Clips won't be published without it."}
+    if "rights" in s and s["rights"] in NEEDS_REFERENCE and "rights_ref" not in s:
+        if len(text) < 8:
+            return {"session": sid, "ask": "rights_ref", "reply": "Please paste the campaign link or permission reference."}
+        s["rights_ref"] = text
+    if "rights" in s:
+        jid, created = DBI.create_job(s["client_id"], s["source"], s["probe"]["key"], s["rights"], s["clip_count"], 15,
+                                      59, rights_ref=s.get("rights_ref"))
         pol = get_client(DBI, s["client_id"])["publish"]
         mode = ("publish them on your schedule automatically" if pol["autonomous"]
                 else "hold them for your approval before uploading")

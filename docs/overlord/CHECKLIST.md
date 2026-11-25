@@ -16,7 +16,7 @@ Last updated: 2026-11-25 (session 0dab6155).
 | 7 Composio + YouTube | 🟡 | Live read verified (channel lookup through Composio proxy). Upload/schedule tested with FakeYouTube only — **no real upload yet** (needs owner's go-ahead + COMPOSIO_API_KEY on the server) |
 | 8 Analytics + feedback | ✅ (logic) / 🟡 (live) | collect/recommend tested with fake analytics |
 | 9 Cloud deployment | ⛔ | Dockerfile + compose ready; **no hosting account** available to this session (see DEPLOY.md) |
-| 10 E2E tests | ✅ | 7 unit + 6 e2e passing (crash-resume, retries, dedupe, revoked auth, chat API) |
+| 10 E2E tests | ✅ | 8 unit + 6 e2e passing (crash-resume, retries, dedupe, revoked auth, chat API, permission reference) |
 | 11 Deploy + verify | ⛔ | depends on 9 |
 | 12 Commit + push | ✅ | branch pushed; PR opened |
 
@@ -30,3 +30,11 @@ Last updated: 2026-11-25 (session 0dab6155).
 - Raw Video #3 contains frame blending (ghosted frames at ~11 s) in the source itself.
 - Custom thumbnails for Shorts are not settable through the API in most cases; a cover JPG is produced anyway.
 - SQLite = one host. Multi-host scaling needs Postgres + S3 (ROADMAP).
+
+## Session log
+- 2026-11-25: third-party content now needs a rights reference (campaign link / written permission) before any
+  upload (`jobs.rights_ref`, chat asks for it). Owner asked to mass-clip an IShowSpeed stream (Content ID, not theirs);
+  declined until a campaign link exists. See CLIPPING-PROGRAMS.md.
+- Composio API key: the value first saved on the environment was a YouTube URL, not a key (Composio returned 401).
+  Needs replacing with the key from Composio dashboard → Settings → API Keys (environment → Network secrets,
+  host backend.composio.dev, header x-api-key).

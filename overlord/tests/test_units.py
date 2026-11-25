@@ -113,3 +113,19 @@ def test_seo_validation_limits_and_avoid_words():
         raise AssertionError("avoid word not enforced")
     except ValueError:
         pass
+
+
+def test_third_party_content_needs_permission_reference(env):
+    from overlord.publish.publisher import eligible
+
+    st, db = env
+    cid = create_client(db, "Clipper")
+    pol = get_client(db, cid)["publish"] | {"autonomous": True}
+    j1, _ = db.create_job(cid, "u", "yt:a", "clipping_program", 3, 15, 59)
+    j2, _ = db.create_job(cid, "u", "yt:b", "clipping_program", 3, 15, 59, rights_ref="https://whop.com/campaign/x")
+    j3, _ = db.create_job(cid, "u", "yt:c", "own_content", 3, 15, 59)
+    clip = {"qc_pass": 1, "path": __file__, "approval": "pending"}
+    ok1, why1 = eligible(db, {**clip, "job_id": j1}, pol)
+    assert not ok1 and "permission" in why1
+    assert eligible(db, {**clip, "job_id": j2}, pol)[0]
+    assert eligible(db, {**clip, "job_id": j3}, pol)[0]

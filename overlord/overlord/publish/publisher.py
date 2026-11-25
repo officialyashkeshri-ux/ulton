@@ -33,7 +33,13 @@ def file_hash(path: str) -> str:
     return h.hexdigest()
 
 
-def eligible(db: DB, clip: dict, policy: dict) -> tuple[bool, str]:
+NEEDS_REFERENCE = {"licensed", "clipping_program", "creator_permission"}
+
+
+def eligible(db: DB, clip: dict, policy: dict, job: dict | None = None) -> tuple[bool, str]:
+    job = job or db.one("SELECT * FROM jobs WHERE id=?", clip["job_id"]) or {}
+    if job.get("rights_basis") in NEEDS_REFERENCE and not (job.get("rights_ref") or "").strip():
+        return False, "third-party content: add the campaign link or written permission before publishing"
     if not clip.get("qc_pass"):
         return False, "quality checks did not pass"
     if not clip.get("path") or not Path(clip["path"]).exists():
@@ -53,7 +59,7 @@ def publish_job(db: DB, job_id: str, yt: YouTube, actor: str = "worker") -> dict
     report = {"scheduled": [], "skipped": {}, "failed": {}, "needs_user": None}
     todo = []
     for c in clips:
-        ok, why = eligible(db, c, policy)
+        ok, why = eligible(db, c, policy, job)
         up = db.one("SELECT * FROM uploads WHERE clip_id=?", c["id"])
         if up and up["state"] in ("scheduled", "published"):
             report["scheduled"].append({"clip": c["id"], "url": up["url"], "publish_at": up["publish_at"]})

@@ -26,7 +26,7 @@ def main(argv=None) -> int:
     for name in ("run", "enqueue"):
         r = sub.add_parser(name)
         r.add_argument("source"); r.add_argument("--client", required=True); r.add_argument("--clips", type=int)
-        r.add_argument("--rights", choices=RIGHTS_BASES); r.add_argument("--min", type=float, default=15)
+        r.add_argument("--rights", choices=RIGHTS_BASES); r.add_argument("--rights-ref", help="campaign link / permission reference for third-party content"); r.add_argument("--min", type=float, default=15)
         r.add_argument("--max", type=float, default=59); r.add_argument("--publish", action="store_true",
                                                                          help="publish per the client's policy")
     s = sub.add_parser("show"); s.add_argument("job")
@@ -45,7 +45,10 @@ def main(argv=None) -> int:
         rights = a.rights or input(f"Rights basis {RIGHTS_BASES}: ").strip()
         if rights not in RIGHTS_BASES:
             print("A rights basis is required."); return 2
-        jid, created = db.create_job(a.client, a.source, pr.key, rights, n, a.min, a.max)
+        ref = a.rights_ref
+        if rights != "own_content" and rights != "public_domain_or_cc" and not ref:
+            ref = input("Campaign link or permission reference (required to publish third-party content): ").strip()
+        jid, created = db.create_job(a.client, a.source, pr.key, rights, n, a.min, a.max, rights_ref=ref or None)
         print(f"Job {jid} {'queued' if created else 'already exists'}. I'll find the strongest {n} independent "
               f"moments, edit them, quality-check them and prepare metadata.")
         if a.cmd == "run":

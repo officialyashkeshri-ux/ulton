@@ -131,5 +131,12 @@ def test_api_chat_flow(env, speech_video, monkeypatch):
     assert r["ask"] == "rights_basis"
     r = c.post("/api/chat", json={"client_id": cid, "message": "own_content", "session": r["session"]}).json()
     assert r["job_id"] and "strongest 10" in r["reply"] and "approval" in r["reply"]
+    # third-party content: the chat asks for the campaign link, and a URL answer is not mistaken for a new video
+    r = c.post("/api/chat", json={"client_id": cid, "message": str(speech_video)}).json()
+    r = c.post("/api/chat", json={"client_id": cid, "message": "5", "session": r["session"]}).json()
+    r = c.post("/api/chat", json={"client_id": cid, "message": "clipping_program", "session": r["session"]}).json()
+    assert r["ask"] == "rights_ref"
+    r = c.post("/api/chat", json={"client_id": cid, "message": "https://whop.com/campaign/abc", "session": r["session"]}).json()
+    assert r.get("job_id"), r
     assert c.get("/api/health").json()["ok"]
-    assert c.get("/api/overview").json()["videos"] == 1
+    assert c.get("/api/overview").json()["videos"] == 2
