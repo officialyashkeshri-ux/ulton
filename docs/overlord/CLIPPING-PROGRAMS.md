@@ -23,3 +23,12 @@ Sources: [win.gg](https://win.gg/kick-clipping-program/), [socialagechecker](htt
 [Tubefilter on N3on](https://www.tubefilter.com/2026/04/29/n3on-spending-millions-stream-clippers-tiktok-kick/amp/),
 [Content Rewards](https://contentrewards.com/blog/get-paid-clip-streamers),
 [Picsart](https://picsart.com/blog/what-is-a-clipping-campaign/), [Streams Charts](https://streamscharts.com/news/manufactured-virality-how-paid-clipping-networks-became-streamer-marketings-hidden-engine).
+
+## Update 2026-11-25: live IShowSpeed campaign
+Expedia × IShowSpeed on Content Rewards (Whop), run by Reach: $1 per 1,000 views, $500 cap per clip, 10,000-view
+minimum, approval required, submit each posted clip link within 30 minutes, socials must be verified. Reported live on
+21 Nov 2026 with about $7,300 left (unverified). **Eligible footage: only the IShowSpeed stream of 6 Nov 2026**, so the
+GTA 6 video of 22 Nov (M2qGeO7OvHM) is not covered.
+Sources: [Content Rewards](https://contentrewards.com/articles/ishowspeed-clipping-campaign),
+[Reach](https://reachclipping.com/Expedia-IShowSpeed), [ClippingAlpha](https://clippingalpha.com/campaigns/ishowspeed),
+[Clyper](https://www.clyper.io/clipping-programs/ishowspeed), [OpenClip GTA 6](https://openclip.app/clipping/gta-6-clipping).
