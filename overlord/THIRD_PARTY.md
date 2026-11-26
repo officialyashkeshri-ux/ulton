@@ -10,3 +10,6 @@
 Runtime dependencies (installed by pip, not bundled): faster-whisper (MIT), OpenCV (Apache-2.0), FastAPI (MIT),
 yt-dlp (Unlicense), composio (MIT/Apache per package), anthropic (MIT). FFmpeg is a system package (LGPL/GPL build).
 Overlord contains no NeonClipping code.
+
+Not committed (38 MB, download when needed for per-person tracking, e.g. a campaign subject):
+`models/face_recognition_sface_2021dec.onnx` from https://huggingface.co/opencv/face_recognition_sface (OpenCV Zoo SFace, Apache-2.0).
