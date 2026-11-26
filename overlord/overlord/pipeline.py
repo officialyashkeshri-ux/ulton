@@ -167,7 +167,8 @@ def render_with_retry(cx: Ctx, media, tr, c, ing, picker, attempts: int = 3) -> 
     scores = json.loads(c["scores_json"])
     misleading = "rejected" in scores.get("_reasons", {})
     meta = json.loads(c["seo_json"] or "null") or {}
-    hook = meta.get("hook_text") if meta.get("source") == "claude" else teaser_hook(c["text"])
+    fixed = (prof.get("hook_title") or {}).get("fixed_text")  # campaign-required on-screen text, per client
+    hook = fixed or (meta.get("hook_text") if meta.get("source") == "claude" else teaser_hook(c["text"]))
     out = cx.dir / "clips" / f"{c['rank']:02d}_{c['id']}.mp4"
     out.parent.mkdir(exist_ok=True)
     report = {}

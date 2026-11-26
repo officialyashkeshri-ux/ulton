@@ -152,7 +152,9 @@ def captions_ass(words: list[dict], prof: dict, hook_text: str | None, total: fl
             "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     lines = []
     if hook.get("enabled") and hook_text:
-        lines.append(f"Dialogue: 1,{_t(0)},{_t(min(hook['seconds'], total))},Hook,,0,0,0,,{{\\fad(80,150)}}"
+        # seconds < 0 keeps the title on screen for the whole clip (e.g. campaign "on-screen text must mention X")
+        end = total if hook.get("seconds", 2.5) < 0 else min(hook["seconds"], total)
+        lines.append(f"Dialogue: 1,{_t(0)},{_t(end)},Hook,,0,0,0,,{{\\fad(80,150)}}"
                      f"{_wrap(hook_text, 18)}")
     hl = _hex_ass(cap["highlight"])
     n = max(1, int(cap["max_words"]))
