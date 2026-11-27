@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overlord</title>
+<style>
+:root{--bg:#0b0b0d;--panel:#16161a;--line:#2a2a31;--text:#f2eee3;--mute:#9a978f;--accent:#d4ff3f;--bad:#ff6b6b;--warn:#ffc04d;--ok:#62e69b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;gap:16px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:18px;margin:0;letter-spacing:.04em}h1 b{color:var(--accent)}
+nav button{background:none;border:0;color:var(--mute);font:inherit;padding:6px 10px;border-radius:8px;cursor:pointer}
+nav button.on{color:var(--bg);background:var(--accent)}
+main{padding:16px;max-width:1200px;margin:auto}section{display:none}section.on{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.big{font-size:28px;font-weight:700}.mute{color:var(--mute);font-size:13px}
+table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid var(--line);text-align:left;font-size:14px;vertical-align:top}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;background:var(--line)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}
+input,textarea,select{width:100%;background:#0f0f12;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+button.act{background:var(--accent);color:#000;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer}
+button.ghost{background:none;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}
+.chat{display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto;margin-bottom:10px}
+.msg{padding:10px 12px;border-radius:12px;max-width:85%}.me{align-self:flex-end;background:#26281c}.bot{background:var(--panel);border:1px solid var(--line)}
+.clips{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+video{width:100%;aspect-ratio:9/16;background:#000;border-radius:8px}
+details summary{cursor:pointer;color:var(--mute)}pre{white-space:pre-wrap;font-size:12px;color:var(--mute)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+@media(max-width:600px){main{padding:12px}.big{font-size:22px}}
+</style>
+</head>
+<body>
+<header><h1>OVER<b>LORD</b></h1>
+<nav id="nav"></nav><span class="mute" id="status"></span></header>
+<main>
+<section id="overview"><div class="grid" id="kpis"></div><h3>Recent jobs</h3><div id="recent"></div></section>
+<section id="new"><div class="card"><div class="chat" id="chat"></div>
+ <div class="row"><select id="client" style="max-width:220px"></select><input id="say" placeholder="Paste a YouTube / livestream link, then answer the questions"><button class="act" id="send">Send</button></div>
+ <p class="mute">Or upload a file you have the rights to: <input type="file" id="file" accept="video/*" style="width:auto"></p></div></section>
+<section id="jobs"><div id="jobtable"></div></section>
+<section id="library"><div class="row"><select id="jobpick" style="max-width:360px"></select></div><div id="selrep" class="mute"></div><div class="clips" id="clips"></div></section>
+<section id="settings"><div class="row"><select id="cpick" style="max-width:260px"></select><button class="ghost" id="newclient">New client</button></div>
+ <h3>Publishing policy</h3><textarea id="pub" rows="9"></textarea><button class="act" id="savepub">Save policy</button>
+ <h3>Editing profile</h3><textarea id="prof" rows="16"></textarea><button class="act" id="saveprof">Save profile (new version)</button>
+ <h3>What the data says</h3><pre id="learn"></pre></section>
+</main>
+<script>
+const TABS={overview:"Overview",new:"New job",jobs:"Jobs",library:"Clip library",settings:"Client settings"};
+let token="";try{token=localStorage.getItem("ovl_token")||""}catch(e){}
+const nav=document.getElementById("nav");
+for(const [id,label] of Object.entries(TABS)){const b=document.createElement("button");b.textContent=label;b.onclick=()=>show(id);b.dataset.id=id;nav.appendChild(b)}
+function show(id){document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id===id));nav.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.id===id));load(id)}
+async function api(path,opt={}){opt.headers=Object.assign({"Content-Type":"application/json"},opt.headers||{},token?{Authorization:"Bearer "+token}:{});
+ const r=await fetch(path,opt);if(r.status===401){token=prompt("Admin token");try{localStorage.setItem("ovl_token",token)}catch(e){}return api(path,opt)}
+ if(!r.ok)throw new Error(await r.text());return r.json()}
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const cls=s=>({done:"ok",scheduled:"ok",published:"ok",approved:"ok",running:"warn",queued:"warn",partial:"warn",pending_approval:"warn",failed:"bad",needs_user:"bad",rejected:"bad"}[s]||"");
+async function load(id){try{
+ const h=await api("/api/health");document.getElementById("status").textContent=`queue ${h.queue} · AI scoring ${h.llm?"on":"heuristic"} · publishing ${h.publishing?"connected":"off"}`;
+ if(id==="overview"){const o=await api("/api/overview");
+  document.getElementById("kpis").innerHTML=[["Videos",o.videos],["Clips",o.clips],["Passed QC",o.qc_passed],["Scheduled",o.scheduled],["Published",o.published],["Awaiting approval",o.pending],["Failed jobs",o.failed_jobs],["Render min",((o.usage.render_seconds||0)/60).toFixed(1)]].map(([k,v])=>`<div class="card"><div class="mute">${k}</div><div class="big">${v}</div></div>`).join("");
+  document.getElementById("recent").innerHTML=jobTable((await api("/api/jobs")).slice(0,8))}
+ if(id==="jobs")document.getElementById("jobtable").innerHTML=jobTable(await api("/api/jobs"));
+ if(id==="new"||id==="settings")await clients();
+ if(id==="library")await library();
+}catch(e){document.getElementById("status").textContent="error: "+e.message}}
+function jobTable(js){return `<table><tr><th>Job</th><th>Status</th><th>Stage</th><th>Clips</th><th>Error</th><th></th></tr>`+js.map(j=>`<tr><td><a href="#" onclick="openJob('${j.id}');return false">${j.id}</a><div class="mute">${esc(j.source).slice(0,60)}</div></td><td class="${cls(j.status)}">${j.status}</td><td>${esc(j.stage)} ${(j.progress*100|0)}%</td><td>${j.clip_count}</td><td class="bad">${esc(j.error||"")}</td><td>${["failed","needs_user","partial"].includes(j.status)?`<button class="ghost" onclick="retry('${j.id}')">Retry</button>`:""}</td></tr>`).join("")+"</table>"}
+async function retry(id){await api(`/api/jobs/${id}/retry`,{method:"POST"});load("jobs")}
+function openJob(id){show("library");setTimeout(()=>{document.getElementById("jobpick").value=id;renderJob(id)},300)}
+async function library(){const js=await api("/api/jobs"),p=document.getElementById("jobpick");p.innerHTML=js.map(j=>`<option value="${j.id}">${j.id} · ${j.status} · ${esc(j.source).slice(0,50)}</option>`).join("");p.onchange=()=>renderJob(p.value);if(js[0])renderJob(p.value||js[0].id)}
+async function renderJob(id){const j=await api("/api/jobs/"+id),r=j.select?.report||{};
+ document.getElementById("selrep").textContent=r.pool?`Pool ${r.pool} candidates · selected ${r.selected}/${r.requested} · scoring ${r.scoring_source}${r.shortfall?` · ${r.shortfall_reason}`:""}`:"";
+ const box=document.getElementById("clips");box.innerHTML="";
+ for(const c of j.clips){const d=document.createElement("div");d.className="card";const up=c.upload||{};const seo=c.seo||{};const qc=c.qc||{};
+  d.innerHTML=`<video controls preload="none"></video><div class="row"><b>#${c.rank}</b><span class="pill">score ${c.score.toFixed(2)}</span><span class="pill ${qc.pass?"ok":"bad"}">QC ${qc.pass?"pass":"fail"}</span><span class="pill ${cls(up.state||c.approval)}">${up.state||c.approval}</span></div>
+  <div><b>${esc(seo.title)}</b></div><div class="mute">${(c.end-c.start).toFixed(1)}s from ${Math.floor(c.start/60)}:${String(Math.floor(c.start%60)).padStart(2,"0")}</div>
+  ${up.url?`<div><a href="${esc(up.url)}" target="_blank" rel="noopener">${esc(up.url)}</a><div class="mute">publishes ${esc(up.publish_at)}</div></div>`:""}${up.error?`<div class="bad">${esc(up.error)}</div>`:""}
+  <div class="row" style="margin:8px 0"><button class="act">Approve</button><button class="ghost">Reject</button></div>
+  <details><summary>Why this clip</summary><pre>${esc(Object.entries(c.scores._reasons||{}).map(([k,v])=>`${k}: ${(c.scores[k]??"").toString().slice(0,4)}  ${v}`).join("\n"))}</pre></details>
+  <details><summary>Quality checks</summary><pre>${esc(Object.entries(qc.checks||{}).map(([k,v])=>`${v.ok?"✓":"✗"} ${k}: ${JSON.stringify(v.value)}`).join("\n"))}</pre></details>
+  <details><summary>Metadata</summary><pre>${esc(seo.description)}\n\ntags: ${esc((seo.tags||[]).join(", "))}</pre></details>`;
+  const [ok,no]=d.querySelectorAll(".row button");ok.onclick=()=>review(c.id,"approved",id);no.onclick=()=>review(c.id,"rejected",id);
+  const v=d.querySelector("video");if(c.video_url)v.addEventListener("play",async function once(){v.removeEventListener("play",once);const b=await fetch(c.video_url,{headers:token?{Authorization:"Bearer "+token}:{}}).then(r=>r.blob());v.src=URL.createObjectURL(b);v.play()},{once:false});
+  box.appendChild(d)}}
+async function review(cid,verdict,jid){await api(`/api/clips/${cid}/review`,{method:"POST",body:JSON.stringify({verdict})});renderJob(jid)}
+let CL=[];async function clients(){CL=await api("/api/clients");for(const s of ["client","cpick"]){const el=document.getElementById(s);el.innerHTML=CL.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("")}
+ const cp=document.getElementById("cpick");cp.onchange=fillClient;fillClient()}
+async function fillClient(){const c=CL.find(x=>x.id===document.getElementById("cpick").value);if(!c)return;
+ document.getElementById("pub").value=JSON.stringify(c.publish,null,2);document.getElementById("prof").value=JSON.stringify(c.profile,null,2);
+ document.getElementById("learn").textContent=JSON.stringify(await api(`/api/clients/${c.id}/learning`),null,2)}
+document.getElementById("savepub").onclick=async()=>{const id=document.getElementById("cpick").value;await api(`/api/clients/${id}/publish`,{method:"PATCH",body:document.getElementById("pub").value});await clients()};
+document.getElementById("saveprof").onclick=async()=>{const id=document.getElementById("cpick").value;await api(`/api/clients/${id}/profile`,{method:"PATCH",body:document.getElementById("prof").value});await clients()};
+document.getElementById("newclient").onclick=async()=>{const name=prompt("Client / channel name");if(name){await api("/api/clients",{method:"POST",body:JSON.stringify({name})});await clients()}};
+let SID=null;const chat=document.getElementById("chat");function say(t,me){const d=document.createElement("div");d.className="msg "+(me?"me":"bot");d.textContent=t;chat.appendChild(d);chat.scrollTop=1e9}
+async function send(text){if(!text)return;say(text,true);const r=await api("/api/chat",{method:"POST",body:JSON.stringify({client_id:document.getElementById("client").value,message:text,session:SID})});SID=r.job_id?null:r.session;say(r.reply)}
+document.getElementById("send").onclick=()=>{const i=document.getElementById("say");send(i.value.trim());i.value=""};
+document.getElementById("say").onkeydown=e=>{if(e.key==="Enter")document.getElementById("send").click()};
+document.getElementById("file").onchange=async e=>{const f=e.target.files[0];if(!f)return;say("Uploading "+f.name+"…",true);const fd=new FormData();fd.append("f",f);
+ const r=await fetch("/api/upload",{method:"POST",body:fd,headers:token?{Authorization:"Bearer "+token}:{}}).then(r=>r.json());send(r.path)};
+say("Send a YouTube video, a livestream link, or upload a file. I'll ask how many clips you want.");
+show("overview");setInterval(()=>{const on=document.querySelector("section.on");if(on&&["overview","jobs"].includes(on.id))load(on.id)},15000);
+</script>
+</body>
+</html>

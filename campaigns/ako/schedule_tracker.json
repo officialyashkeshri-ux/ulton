@@ -1,0 +1,116 @@
+{
+ "updated": "2026-11-27T15:06:00Z",
+ "timezone": "Asia/Kolkata (times stored in UTC)",
+ "rule": "one video every 2 hours, scheduled via YouTube status.publishAt, verified with videos.list",
+ "channel": "Staeamers clip (UC-I-QR2qaEG6bwPpz93FHhg)",
+ "blocker": null,
+ "videos": [
+  {
+   "file": "01_ceo.mp4",
+   "video_id": "BBevAF7wToE",
+   "status": "published",
+   "published_at": "2026-11-26T14:29:02Z",
+   "verified": "videos.list processed/public",
+   "retries": 0
+  },
+  {
+   "file": "03_collection.mp4",
+   "video_id": "yZGNpKr5LSs",
+   "status": "published (scheduled 2026-11-26T18:38:00Z)",
+   "verified": "videos.list processed/public",
+   "note": "embeddable/publicStatsViewable were left off by an earlier schedule request; owner may switch them on in Studio",
+   "retries": 0
+  },
+  {
+   "file": "02_blue.mp4",
+   "status": "scheduled",
+   "error": null,
+   "retries": 1,
+   "video_id": "BY-6JaPqbOI",
+   "publish_at": "2026-11-27T16:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches"
+  },
+  {
+   "file": "04_wimbledon.mp4",
+   "status": "scheduled",
+   "error": null,
+   "retries": 1,
+   "video_id": "UTgyYzJGPoM",
+   "publish_at": "2026-11-27T18:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches"
+  },
+  {
+   "file": "05_skelly.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "Yv5_Ww2rJt0",
+   "publish_at": "2026-11-27T20:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "06_recognize.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "cO6P27yruho",
+   "publish_at": "2026-11-27T22:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "07_roll.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "7Z3a4QZTtJM",
+   "publish_at": "2026-11-28T00:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "08_negotiate.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "_uiC5ZE5YkM",
+   "publish_at": "2026-11-28T02:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "09_pink.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "3mFz1vFU4Zw",
+   "publish_at": "2026-11-28T04:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "10_travel.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "b_cFgLywv_o",
+   "publish_at": "2026-11-28T06:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "11_roulette.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "Ur2vka690Uo",
+   "publish_at": "2026-11-28T08:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  },
+  {
+   "file": "12_akimbo.mp4",
+   "status": "scheduled",
+   "retries": 0,
+   "video_id": "X3TXTZf_aZc",
+   "publish_at": "2026-11-28T10:38:00Z",
+   "verified": "videos.list 2026-11-27T15:05Z: processed, private, publishAt matches",
+   "error": null
+  }
+ ],
+ "method": "Composio workbench: upload_local_file -> YOUTUBE_MULTIPART_UPLOAD_VIDEO (private) -> proxy PUT videos?part=status (publishAt, embeddable, publicStatsViewable) -> GET verify. YOUTUBE_UPLOAD_VIDEO corrupts files (Can't process file); do not use it."
+}

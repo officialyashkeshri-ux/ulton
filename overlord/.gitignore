@@ -1,0 +1,6 @@
+.env
+overlord-data/
+*.mp4
+*.wav
+!fonts/
+models/face_recognition_sface_2021dec.onnx
