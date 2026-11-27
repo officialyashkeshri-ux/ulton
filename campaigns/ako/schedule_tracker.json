@@ -1,0 +1,22 @@
+{
+ "updated": "2026-11-27T14:13:00Z",
+ "timezone": "Asia/Kolkata (times stored in UTC)",
+ "rule": "one video every 2 hours, scheduled via YouTube status.publishAt, verified with videos.list",
+ "channel": "Staeamers clip (UC-I-QR2qaEG6bwPpz93FHhg)",
+ "blocker": "YouTube daily upload limit (uploadLimitExceeded) hit on 2026-11-27 14:12 UTC; 10 uploads in the previous 24h incl. 8 deleted failed uploads. Expected to clear ~24h after 2026-11-26 14:21-14:29 UTC.",
+ "videos": [
+  {"file": "01_ceo.mp4", "video_id": "BBevAF7wToE", "status": "published", "published_at": "2026-11-26T14:29:02Z", "verified": "videos.list processed/public", "retries": 0},
+  {"file": "03_collection.mp4", "video_id": "yZGNpKr5LSs", "status": "published (scheduled 2026-11-26T18:38:00Z)", "verified": "videos.list processed/public", "note": "embeddable/publicStatsViewable were left off by an earlier schedule request; owner may switch them on in Studio", "retries": 0},
+  {"file": "02_blue.mp4", "status": "pending", "planned_slot": "2026-11-27T16:38:00Z", "error": "uploadLimitExceeded", "retries": 1},
+  {"file": "04_wimbledon.mp4", "status": "pending", "planned_slot": "2026-11-27T18:38:00Z", "error": "uploadLimitExceeded", "retries": 1},
+  {"file": "05_skelly.mp4", "status": "pending", "planned_slot": "2026-11-27T20:38:00Z", "retries": 0},
+  {"file": "06_recognize.mp4", "status": "pending", "planned_slot": "2026-11-27T22:38:00Z", "retries": 0},
+  {"file": "07_roll.mp4", "status": "pending", "planned_slot": "2026-11-28T00:38:00Z", "retries": 0},
+  {"file": "08_negotiate.mp4", "status": "pending", "planned_slot": "2026-11-28T02:38:00Z", "retries": 0},
+  {"file": "09_pink.mp4", "status": "pending", "planned_slot": "2026-11-28T04:38:00Z", "retries": 0},
+  {"file": "10_travel.mp4", "status": "pending", "planned_slot": "2026-11-28T06:38:00Z", "retries": 0},
+  {"file": "11_roulette.mp4", "status": "pending", "planned_slot": "2026-11-28T08:38:00Z", "retries": 0},
+  {"file": "12_akimbo.mp4", "status": "pending", "planned_slot": "2026-11-28T10:38:00Z", "retries": 0}
+ ],
+ "method": "Composio workbench: upload_local_file -> YOUTUBE_MULTIPART_UPLOAD_VIDEO (private) -> proxy PUT videos?part=status (publishAt, embeddable, publicStatsViewable) -> GET verify. YOUTUBE_UPLOAD_VIDEO corrupts files (Can't process file); do not use it."
+}
